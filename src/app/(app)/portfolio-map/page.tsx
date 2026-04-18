@@ -5,7 +5,6 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   Map as MapIcon,
-  Building2,
   Filter as FilterIcon,
   ArrowRight,
   Search,
@@ -14,26 +13,12 @@ import {
   PORTFOLIO_DATA,
   portfolioTotals,
   healthColor,
-  healthLabel,
   CLASS_META,
   type BuildingClass,
 } from "@/lib/buildings/portfolio";
+import { PortfolioGoogleMap } from "@/components/portfolio/PortfolioGoogleMap";
 
 type HealthBucket = "all" | "healthy" | "watch" | "critical";
-
-// GTA bounding box tuned for the portfolio
-const BOUNDS = {
-  west: -79.80,
-  east: -78.90,
-  south: 43.40,
-  north: 43.92,
-};
-
-function project(lat: number, lng: number, w: number, h: number) {
-  const x = ((lng - BOUNDS.west) / (BOUNDS.east - BOUNDS.west)) * w;
-  const y = ((BOUNDS.north - lat) / (BOUNDS.north - BOUNDS.south)) * h;
-  return { x, y };
-}
 
 export default function PortfolioMapPage() {
   const totals = useMemo(() => portfolioTotals(), []);
@@ -56,13 +41,10 @@ export default function PortfolioMapPage() {
     });
   }, [bucket, classFilter, search]);
 
-  const hovered = filtered.find((b) => b.id === hoverId) ?? null;
-
   return (
     <div className="p-8 space-y-6">
       <Hero totals={totals} />
 
-      {/* Filters */}
       <div className="flex items-center gap-3 flex-wrap">
         <HealthFilter bucket={bucket} onBucket={setBucket} totals={totals} />
         <ClassFilter value={classFilter} onChange={setClassFilter} />
@@ -85,7 +67,26 @@ export default function PortfolioMapPage() {
 
       <div className="grid grid-cols-12 gap-6">
         <div className="col-span-12 xl:col-span-9">
-          <MapCanvas buildings={filtered} hoverId={hoverId} onHover={setHoverId} hovered={hovered} />
+          <div
+            className="rounded-2xl overflow-hidden"
+            style={{ background: "#FFFFFF", border: "1px solid rgba(15,23,42,0.06)", boxShadow: "0 2px 16px rgba(15,23,42,0.06)" }}
+          >
+            <div className="px-4 py-3 flex items-center gap-2 border-b border-slate-100">
+              <MapIcon className="w-4 h-4 text-blue-600" />
+              <div className="text-[12.5px] font-bold text-[#0F172A]">Greater Toronto Area · {filtered.length} buildings</div>
+              <span className="ml-auto inline-flex items-center gap-3 text-[10px] text-[#64748B]">
+                <LegendDot color="#10B981" label="Healthy ≥75" />
+                <LegendDot color="#F59E0B" label="Watch 55–74" />
+                <LegendDot color="#EF4444" label="Critical <55" />
+              </span>
+            </div>
+            <PortfolioGoogleMap
+              buildings={filtered}
+              height={680}
+              hoveredId={hoverId}
+              onHover={setHoverId}
+            />
+          </div>
         </div>
         <div className="col-span-12 xl:col-span-3">
           <BuildingList buildings={filtered} hoverId={hoverId} onHover={setHoverId} />
@@ -117,11 +118,11 @@ function Hero({ totals }: { totals: ReturnType<typeof portfolioTotals> }) {
         </span>
       </div>
       <h1 className="text-[28px] font-bold text-[#0F172A] tracking-tight leading-tight">
-        Every Royal York building, scored in real time
+        Every Royal York building on the map, scored in real time
       </h1>
       <p className="text-[13px] text-[#64748B] mt-0.5 max-w-3xl">
         Each pin is a building. Color = health score (composite of occupancy, arrears, open work orders, compliance).
-        Hover to preview, click to drill in. {totals.critical} critical · {totals.watch} on watchlist · {totals.healthy} healthy.
+        Hover for a preview, click for the full drill-in. {totals.critical} critical · {totals.watch} on watchlist · {totals.healthy} healthy.
       </p>
     </div>
   );
@@ -214,158 +215,6 @@ function ClassFilter({
   );
 }
 
-// ─── Map canvas ──────────────────────────────────────────────────────────────
-
-function MapCanvas({
-  buildings, hoverId, onHover, hovered,
-}: {
-  buildings: typeof PORTFOLIO_DATA;
-  hoverId: string | null;
-  onHover: (id: string | null) => void;
-  hovered: typeof PORTFOLIO_DATA[number] | null;
-}) {
-  const W = 1100;
-  const H = 620;
-
-  return (
-    <div
-      className="rounded-2xl overflow-hidden relative"
-      style={{ background: "#FFFFFF", border: "1px solid rgba(15,23,42,0.06)", boxShadow: "0 2px 16px rgba(15,23,42,0.06)" }}
-    >
-      <div className="px-4 py-3 flex items-center gap-2 border-b border-slate-100">
-        <MapIcon className="w-4 h-4 text-blue-600" />
-        <div className="text-[12.5px] font-bold text-[#0F172A]">Greater Toronto Area · {buildings.length} buildings</div>
-        <span className="ml-auto inline-flex items-center gap-3 text-[10px] text-[#64748B]">
-          <LegendDot color="#10B981" label="Healthy ≥75" />
-          <LegendDot color="#F59E0B" label="Watch 55–74" />
-          <LegendDot color="#EF4444" label="Critical &lt;55" />
-        </span>
-      </div>
-
-      <div className="relative" style={{ background: "linear-gradient(180deg, #F0F9FF 0%, #F8FAFF 100%)" }}>
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} preserveAspectRatio="xMidYMid meet" style={{ display: "block" }}>
-          {/* Decorative "map" grid */}
-          <defs>
-            <pattern id="grid" width="44" height="44" patternUnits="userSpaceOnUse">
-              <path d="M 44 0 L 0 0 0 44" fill="none" stroke="rgba(37,99,235,0.05)" strokeWidth="1" />
-            </pattern>
-            <radialGradient id="lakeOntario" cx="50%" cy="100%" r="60%">
-              <stop offset="0%" stopColor="rgba(37,99,235,0.22)" />
-              <stop offset="100%" stopColor="rgba(37,99,235,0.04)" />
-            </radialGradient>
-          </defs>
-          <rect x="0" y="0" width={W} height={H} fill="url(#grid)" />
-          {/* Lake Ontario indicator */}
-          <rect x="0" y={H * 0.82} width={W} height={H * 0.18} fill="url(#lakeOntario)" />
-          <text x={W - 20} y={H - 14} textAnchor="end" fontSize="11" fontWeight="600" fill="rgba(37,99,235,0.45)" fontFamily="Inter, system-ui">
-            LAKE ONTARIO
-          </text>
-          {/* 401 corridor guide */}
-          <line x1="0" y1={H * 0.32} x2={W} y2={H * 0.32} stroke="rgba(37,99,235,0.08)" strokeWidth="1" strokeDasharray="4 4" />
-          <text x="12" y={H * 0.32 - 6} fontSize="9" fontWeight="600" fill="rgba(37,99,235,0.4)" fontFamily="Inter, system-ui">
-            401 CORRIDOR
-          </text>
-
-          {/* Building pins */}
-          {buildings.map((b) => {
-            const { x, y } = project(b.lat, b.lng, W, H);
-            const c = healthColor(b.healthScore);
-            const isHover = hoverId === b.id;
-            const radius = isHover ? 12 : 7;
-            return (
-              <g
-                key={b.id}
-                onMouseEnter={() => onHover(b.id)}
-                onMouseLeave={() => onHover(null)}
-                style={{ cursor: "pointer" }}
-              >
-                {/* outer pulse ring for critical */}
-                {b.healthScore < 55 && (
-                  <circle cx={x} cy={y} r="14" fill="none" stroke={c} strokeWidth="1.5" opacity="0.3">
-                    <animate attributeName="r" from="10" to="18" dur="2.4s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" from="0.5" to="0" dur="2.4s" repeatCount="indefinite" />
-                  </circle>
-                )}
-                <circle cx={x} cy={y} r={radius + 2} fill="#FFFFFF" />
-                <circle cx={x} cy={y} r={radius} fill={c} opacity={isHover ? 1 : 0.88} />
-                <circle cx={x} cy={y} r={radius - 3} fill="#FFFFFF" opacity="0.4" />
-              </g>
-            );
-          })}
-        </svg>
-
-        {/* Hover card */}
-        {hovered && (
-          <Link
-            href={`/building-detail?id=${hovered.id}`}
-            className="absolute pointer-events-auto"
-            style={{
-              left: `min(max(${project(hovered.lng, hovered.lat, 1, 1).x * 100}%, 8%), 72%)`,
-              top: `min(max(${project(hovered.lat, hovered.lng, 1, 1).y * 100}%, 4%), 76%)`,
-              transform: "translate(14px, -10px)",
-            }}
-          >
-            <BuildingCard building={hovered} />
-          </Link>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function BuildingCard({ building }: { building: typeof PORTFOLIO_DATA[number] }) {
-  const c = healthColor(building.healthScore);
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.12 }}
-      className="w-[260px] rounded-xl"
-      style={{
-        background: "#0F172A",
-        border: `1px solid ${c}55`,
-        boxShadow: `0 12px 32px rgba(15,23,42,0.35), 0 0 0 1px ${c}30`,
-      }}
-    >
-      <div className="px-3 pt-3 pb-2 flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-[12.5px] font-bold text-white leading-tight truncate">{building.name}</div>
-          <div className="text-[10px] text-slate-400 truncate mt-0.5">{building.address} · {building.neighbourhood}</div>
-        </div>
-        <div
-          className="w-9 h-9 rounded-md flex items-center justify-center text-[12px] font-bold tabular-nums shrink-0"
-          style={{ background: `${c}22`, color: c, border: `1px solid ${c}55` }}
-        >
-          {building.healthScore}
-        </div>
-      </div>
-      <div className="px-3 pb-2 grid grid-cols-2 gap-1.5 text-[10px]">
-        <Stat label="Units" value={building.units.toString()} />
-        <Stat label="Occupancy" value={`${building.occupancyPct}%`} />
-        <Stat label="Open work orders" value={building.openWorkOrders.toString()} accent={building.overdueWorkOrders > 0 ? "#F59E0B" : undefined} />
-        <Stat label="Arrears" value={building.arrearsTenants.toString()} accent={building.arrearsTenants > 5 ? "#EF4444" : undefined} />
-      </div>
-      <div className="px-3 py-2 border-t border-slate-700 flex items-center justify-between" style={{ background: "rgba(255,255,255,0.02)" }}>
-        <span className="text-[10px] font-bold tracking-[0.1em] uppercase" style={{ color: c }}>
-          {healthLabel(building.healthScore)}
-        </span>
-        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-blue-300">
-          Open building <ArrowRight className="w-2.5 h-2.5" />
-        </span>
-      </div>
-    </motion.div>
-  );
-}
-
-function Stat({ label, value, accent }: { label: string; value: string; accent?: string }) {
-  return (
-    <div className="rounded-md p-1.5" style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <div className="text-[9px] text-slate-400 font-semibold tracking-[0.1em] uppercase">{label}</div>
-      <div className="text-[12px] font-bold text-white tabular-nums leading-tight" style={{ color: accent ?? "#FFFFFF" }}>{value}</div>
-    </div>
-  );
-}
-
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <span className="inline-flex items-center gap-1">
@@ -374,8 +223,6 @@ function LegendDot({ color, label }: { color: string; label: string }) {
     </span>
   );
 }
-
-// ─── Building list (sidebar) ─────────────────────────────────────────────────
 
 function BuildingList({
   buildings, hoverId, onHover,
@@ -394,7 +241,7 @@ function BuildingList({
         <div className="text-[12px] font-bold text-[#0F172A]">Buildings · worst first</div>
         <div className="text-[10px] text-[#94A3B8]">Hover a row to highlight on the map</div>
       </div>
-      <div className="overflow-y-auto" style={{ maxHeight: 620 }}>
+      <div className="overflow-y-auto" style={{ maxHeight: 720 }}>
         {sorted.map((b) => {
           const c = healthColor(b.healthScore);
           const active = hoverId === b.id;
@@ -429,5 +276,3 @@ function BuildingList({
     </div>
   );
 }
-
-void Building2;
