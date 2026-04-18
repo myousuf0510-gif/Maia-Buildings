@@ -402,18 +402,18 @@ function AgentCard({
               <DetailBlock title="Quick actions" icon={CheckCircle2} accent={agent.accent}>
                 <div className="flex flex-col gap-1.5">
                   <Link
-                    href={agent.feedsPages[0] ?? "/decisions-ledger"}
+                    href={`/agents/${agent.id}`}
                     className="inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[10.5px] font-bold text-white"
                     style={{ background: `linear-gradient(135deg, ${agent.accent}, ${agent.accent}CC)` }}
                   >
-                    Open agent surface <ArrowRight className="w-2.5 h-2.5" />
+                    Open agent detail <ArrowRight className="w-2.5 h-2.5" />
                   </Link>
                   <Link
-                    href="/decisions-ledger"
+                    href={agent.feedsPages[0] ?? "/decisions-ledger"}
                     className="inline-flex items-center justify-center gap-1 px-2 py-1.5 rounded-md text-[10.5px] font-bold"
                     style={{ background: "#FFFFFF", color: agent.accent, border: `1px solid ${agent.accent}30` }}
                   >
-                    View decisions
+                    Open surface
                   </Link>
                 </div>
               </DetailBlock>

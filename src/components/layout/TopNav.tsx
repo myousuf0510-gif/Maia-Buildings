@@ -32,6 +32,8 @@ const routeLabels: Record<string, { title: string; subtitle: string }> = {
   "/algorithms":                  { title: "Algorithms",           subtitle: "The math behind every decision" },
   "/configs":                     { title: "Configurations",       subtitle: "Every tunable knob in the platform" },
   "/rules":                       { title: "Rules Engine",         subtitle: "The rules MAIA refuses to break" },
+  "/knowledge":                   { title: "Knowledge Hub",        subtitle: "The docs MAIA reads before every decision" },
+  "/integrations":                { title: "Integrations",         subtitle: "Data in + data out · connection status" },
   "/settings":                    { title: "Settings",             subtitle: "Platform configuration" },
 };
 

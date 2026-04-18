@@ -26,6 +26,8 @@ import {
   Network,
   FileText,
   Newspaper,
+  BookOpen,
+  Plug,
 } from "lucide-react";
 
 const navItems = [
@@ -80,6 +82,8 @@ const navItems = [
           { href: "/intelligence-graph", icon: Network, label: "Intelligence Graph", badge: "LIVE" },
           { href: "/decisions-ledger", icon: FileText, label: "Decisions Ledger" },
           { href: "/briefings/executive", icon: Newspaper, label: "Executive Briefing" },
+          { href: "/knowledge", icon: BookOpen, label: "Knowledge Hub" },
+          { href: "/integrations", icon: Plug, label: "Integrations" },
           { href: "/models", icon: Brain, label: "Models" },
           { href: "/algorithms", icon: Cpu, label: "Algorithms" },
           { href: "/configs", icon: Code, label: "Configurations" },

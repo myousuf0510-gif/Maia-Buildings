@@ -1,832 +1,452 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useEffect } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { notFound } from "next/navigation";
+import { use, useMemo } from "react";
 import {
+  Bot,
   ArrowLeft,
-  Pause,
-  Settings as SettingsIcon,
+  ArrowRight,
   Activity,
-  MessageSquare,
-  FileText,
-  BarChart3,
-  Sliders,
-  Play,
-  ShieldAlert,
-  TrendingUp,
-  CheckCircle2,
-  XCircle,
-  Sparkles,
   Zap,
-  Loader2,
+  Database,
+  CheckCircle2,
+  Clock,
+  Shield,
+  BookOpen,
+  AlertTriangle,
+  ExternalLink,
+  Sparkles,
+  FileText,
+  Pause,
 } from "lucide-react";
-import {
-  useAgent,
-  useAgentRuns,
-  computeMetrics,
-  approveRun as approveRunRemote,
-  rejectRun as rejectRunRemote,
-} from "@/lib/agents/data";
-import { AgentStatusPill } from "@/components/agents/AgentStatusPill";
-import { MetricTile } from "@/components/agents/MetricTile";
-import { DecisionCard } from "@/components/agents/DecisionCard";
-import type { AgentRun } from "@/lib/agents/types";
+import { AGENTS, MODELS, ALGORITHMS, RULE_PACKS } from "@/lib/platform/registry";
+import { docsByAgent, CATEGORY_META } from "@/lib/buildings/knowledge";
+import { WORK_ORDERS } from "@/lib/buildings/work-orders";
+import { TRADE_META, workerById } from "@/lib/buildings/workers";
+import { PORTFOLIO_DATA } from "@/lib/buildings/portfolio";
 
-const TABS = ["Decisions", "Performance", "Configuration", "Activity"] as const;
-type Tab = (typeof TABS)[number];
+export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params);
+  const agent = AGENTS.find((a) => a.id === id);
+  if (!agent) return notFound();
+  const docs = docsByAgent(id);
+  const firstWord = agent.name.split(" ")[0].toLowerCase();
+  const relatedModels = MODELS.filter((m) => m.usedBy.some((u) => u.toLowerCase().includes(firstWord)));
+  const relatedAlgos = ALGORITHMS.filter((a) => a.usedIn.some((u) => u.toLowerCase().includes(firstWord)));
 
-export default function AgentInspectorPage() {
-  const params = useParams<{ id: string }>();
-  const router = useRouter();
-  const { data: agent } = useAgent(params.id);
-  const { data: baseRuns, source } = useAgentRuns(params.id);
-
-  // Local state mirrors the server response so optimistic approve/reject works
-  const [runs, setRuns] = useState<AgentRun[]>(baseRuns);
-  useEffect(() => setRuns(baseRuns), [baseRuns]);
-
-  const metrics = useMemo(
-    () => (agent ? computeMetrics(runs, agent.id) : null),
-    [agent, runs],
-  );
-
-  const [tab, setTab] = useState<Tab>("Decisions");
-  const [paused, setPaused] = useState(false);
-  const [runFilter, setRunFilter] = useState<"all" | "pending" | "executed" | "rejected">("all");
-  const [runNowState, setRunNowState] = useState<"idle" | "running" | "done" | "error">("idle");
-  const [runNowMessage, setRunNowMessage] = useState<string | null>(null);
-
-  const triggerRunNow = async () => {
-    if (!agent || runNowState === "running") return;
-    setRunNowState("running");
-    setRunNowMessage(null);
-    try {
-      const res = await fetch(`/api/agents/${agent.id}/run-once`, {
-        method: "POST",
-      });
-      const data = await res.json();
-      if (data.ok) {
-        setRunNowState("done");
-        setRunNowMessage(
-          `${data.reasoning_source === "claude" ? "Claude" : "Synthesized"} · ${data.candidate?.name ?? "candidate"} · ${data.run_id}`,
-        );
-        // Reload the page to pick up the new run
-        setTimeout(() => window.location.reload(), 900);
-      } else {
-        setRunNowState("error");
-        setRunNowMessage(data.error ?? "Run failed");
-      }
-    } catch (e) {
-      setRunNowState("error");
-      setRunNowMessage((e as Error).message);
-    }
-  };
-
-  if (!agent || !metrics) {
-    return (
-      <div className="px-8 py-12 text-center">
-        <h1 className="text-[20px] font-bold text-slate-900 mb-2">Agent not found</h1>
-        <Link href="/agents" className="text-blue-600">
-          ← Back to agents
-        </Link>
-      </div>
-    );
-  }
-
-  const filteredRuns = runs.filter((r) => {
-    if (runFilter === "all") return true;
-    if (runFilter === "pending")
-      return r.status === "proposed" || r.status === "notified";
-    return r.status === runFilter;
-  });
-
-  const approveRun = async (run: AgentRun) => {
-    const approverName = "James Mitchell";
-    const now = new Date().toISOString();
-    const executed = new Date(Date.now() + 2500).toISOString();
-    // Optimistic update
-    setRuns((prev) =>
-      prev.map((r) =>
-        r.id === run.id
-          ? {
-              ...r,
-              status: "executed",
-              approved_by: approverName,
-              approved_at: now,
-              executed_at: executed,
-              response_time_seconds: Math.floor(
-                (Date.now() - new Date(r.triggered_at).getTime()) / 1000,
-              ),
-              estimated_savings: r.estimated_savings || 2140,
-            }
-          : r,
-      ),
-    );
-    // Persist (falls back to no-op in mock mode)
-    await approveRunRemote(run.id, approverName);
-  };
-
-  const rejectRun = async (run: AgentRun) => {
-    const approverName = "James Mitchell";
-    const now = new Date().toISOString();
-    setRuns((prev) =>
-      prev.map((r) =>
-        r.id === run.id
-          ? {
-              ...r,
-              status: "rejected",
-              approved_by: approverName,
-              approved_at: now,
-              response_time_seconds: Math.floor(
-                (Date.now() - new Date(r.triggered_at).getTime()) / 1000,
-              ),
-            }
-          : r,
-      ),
-    );
-    await rejectRunRemote(run.id, approverName);
-  };
+  const recentDecisions = useMemo(() => {
+    if (id !== "dispatch_agent" && id !== "work_order_market") return [];
+    return WORK_ORDERS.filter((w) => w.assigneeId).slice(0, 12);
+  }, [id]);
 
   return (
-    <div className="px-8 py-8 max-w-[1400px] mx-auto">
-      {/* Back link */}
-      <Link
-        href="/agents"
-        className="text-[12px] font-semibold text-slate-500 hover:text-slate-900 inline-flex items-center gap-1.5 mb-5 transition-colors"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" />
-        Agents
+    <div className="p-8 space-y-6 max-w-6xl mx-auto">
+      <BackBar agent={agent} />
+      <Hero agent={agent} />
+
+      <div className="grid grid-cols-12 gap-6">
+        <div className="col-span-12 xl:col-span-8 space-y-6">
+          <Capabilities agent={agent} />
+          {recentDecisions.length > 0 && <RecentDecisions decisions={recentDecisions} />}
+          <KnowledgeReferences docs={docs} />
+          <ExplainFactors agent={agent} />
+        </div>
+        <div className="col-span-12 xl:col-span-4 space-y-6">
+          <StatsCard agent={agent} />
+          <ModelsUsed models={relatedModels} />
+          <AlgorithmsUsed algorithms={relatedAlgos} />
+          <RulesEnforced />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BackBar({ agent }: { agent: typeof AGENTS[number] }) {
+  return (
+    <div className="flex items-center gap-2 text-[11px] text-[#64748B]">
+      <Link href="/agents" className="inline-flex items-center gap-1 text-[#2563EB] hover:underline">
+        <ArrowLeft className="w-3 h-3" /> Agents
       </Link>
+      <span>›</span>
+      <span className="font-bold text-[#0F172A]">{agent.name}</span>
+    </div>
+  );
+}
 
-      {/* Hero */}
-      <div
-        className="solid-card p-6 mb-5 relative overflow-hidden animate-fade-in"
-        style={{
-          background:
-            "linear-gradient(135deg, #FFFFFF 0%, rgba(248,250,252,0.6) 60%, rgba(37,99,235,0.02) 100%)",
-        }}
-      >
-        {/* Plasma accent */}
-        <div
-          aria-hidden
-          className="absolute top-0 right-0 w-[360px] h-[180px] pointer-events-none"
-          style={{
-            background:
-              "radial-gradient(ellipse at 100% 0%, rgba(37,99,235,0.12) 0%, transparent 60%)",
-            filter: "blur(20px)",
-          }}
-        />
-
-        <div className="relative flex items-start gap-5">
+function Hero({ agent }: { agent: typeof AGENTS[number] }) {
+  return (
+    <div
+      className="rounded-2xl p-6 overflow-hidden relative"
+      style={{
+        background: `linear-gradient(135deg, ${agent.accent}08, #FFFFFF 60%)`,
+        border: `1px solid ${agent.accent}28`,
+        boxShadow: "0 2px 16px rgba(15,23,42,0.06)",
+      }}
+    >
+      <div className="flex items-start justify-between gap-6 flex-wrap relative">
+        <div className="flex items-start gap-4 min-w-0">
           <div
             className="w-14 h-14 rounded-2xl flex items-center justify-center shrink-0"
             style={{
-              background:
-                "linear-gradient(135deg, rgba(37,99,235,0.08) 0%, rgba(124,58,237,0.08) 100%)",
-              border: "1px solid rgba(37,99,235,0.18)",
+              background: `linear-gradient(135deg, ${agent.accent}22, ${agent.accent}08)`,
+              border: `1px solid ${agent.accent}40`,
             }}
           >
-            <ShieldAlert className="w-7 h-7 text-blue-600" />
+            <Bot className="w-7 h-7" style={{ color: agent.accent }} />
           </div>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-1.5 flex-wrap">
-              <h1 className="text-[26px] font-bold tracking-[-0.02em] text-slate-900">
-                {agent.name}
-              </h1>
-              <AgentStatusPill
-                status={paused && agent.status === "active" ? "paused" : agent.status}
-                autonomy={agent.autonomy}
-              />
-            </div>
-            <p className="text-[13.5px] text-slate-600 leading-relaxed max-w-3xl mb-4">
-              {agent.description}
-            </p>
-            <div className="flex items-center flex-wrap gap-3 text-[11px] text-slate-500">
-              <Meta label="Deployed">
-                {agent.deployed_at
-                  ? new Date(agent.deployed_at).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })
-                  : "—"}
-              </Meta>
-              <span className="text-slate-300">·</span>
-              <Meta label="Jurisdiction">
-                {agent.config.guardrails.jurisdiction}
-              </Meta>
-              <span className="text-slate-300">·</span>
-              <Meta label="Scope">
-                {agent.config.scope.all_departments
-                  ? "All departments"
-                  : `${agent.config.scope.department_ids?.length ?? 0} departments`}
-              </Meta>
-              <span className="text-slate-300">·</span>
-              <Meta label="Max/hour">
-                {agent.config.guardrails.max_decisions_per_hour} decisions
-              </Meta>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Run Now — manually trigger a single agent pass */}
-            <button
-              type="button"
-              onClick={triggerRunNow}
-              disabled={runNowState === "running" || agent.status !== "active"}
-              className="btn-primary flex items-center gap-1.5"
-              title={
-                agent.status !== "active"
-                  ? "Agent is not active"
-                  : "Trigger a single manual run — scans live fatigue data and generates a new decision"
-              }
-            >
-              {runNowState === "running" ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Running…
-                </>
-              ) : runNowState === "done" ? (
-                <>
-                  <CheckCircle2 className="w-4 h-4" />
-                  Queued
-                </>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              {agent.status === "live" ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold tracking-[0.14em] uppercase"
+                  style={{ background: "rgba(16,185,129,0.1)", color: "#059669", border: "1px solid rgba(16,185,129,0.3)" }}>
+                  <span className="relative flex w-1.5 h-1.5">
+                    <span className="absolute inline-flex w-full h-full rounded-full bg-emerald-500 opacity-50 animate-ping" />
+                    <span className="relative w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  </span>
+                  Live
+                </span>
               ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold tracking-[0.14em] uppercase"
+                  style={{ background: "rgba(245,158,11,0.1)", color: "#B45309", border: "1px solid rgba(245,158,11,0.25)" }}>
+                  <Pause className="w-2.5 h-2.5" />
+                  {agent.status}
+                </span>
+              )}
+              <span className="text-[10px] font-bold tracking-[0.14em] uppercase" style={{ color: agent.accent }}>
+                {agent.cadence}
+              </span>
+              {agent.lastRun && (
                 <>
-                  <Zap className="w-4 h-4" />
-                  Run Now
+                  <span className="text-[10.5px] text-[#94A3B8]">·</span>
+                  <span className="text-[10.5px] text-[#64748B]">Last run {agent.lastRun}</span>
                 </>
               )}
-            </button>
-            <button
-              type="button"
-              onClick={() => setPaused((v) => !v)}
-              className="btn-secondary"
-            >
-              {paused ? (
-                <>
-                  <Play className="w-4 h-4 inline-block mr-1.5" />
-                  Resume
-                </>
-              ) : (
-                <>
-                  <Pause className="w-4 h-4 inline-block mr-1.5" />
-                  Pause
-                </>
-              )}
-            </button>
-            <button type="button" className="btn-secondary">
-              <SettingsIcon className="w-4 h-4 inline-block mr-1.5" />
-              Configure
-            </button>
+            </div>
+            <h1 className="text-[28px] font-bold text-[#0F172A] tracking-tight leading-tight">{agent.name}</h1>
+            <p className="text-[13px] text-[#475569] mt-1 max-w-3xl leading-relaxed">{agent.purpose}</p>
           </div>
         </div>
-        {runNowMessage && (
-          <div
-            className="relative mt-4 mx-6 px-3 py-2 rounded-lg text-[11.5px] font-medium"
-            style={{
-              background:
-                runNowState === "error"
-                  ? "rgba(239,68,68,0.06)"
-                  : "rgba(16,185,129,0.06)",
-              border: `1px solid ${runNowState === "error" ? "rgba(239,68,68,0.2)" : "rgba(16,185,129,0.22)"}`,
-              color: runNowState === "error" ? "#DC2626" : "#059669",
-            }}
-          >
-            {runNowState === "error" ? "⚠ " : "✓ "}
-            {runNowMessage}
-          </div>
-        )}
-      </div>
-
-      {/* Metrics */}
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
-        <MetricTile
-          label="Total Runs"
-          value={metrics.total_runs.toLocaleString()}
-          sub="lifetime"
-          className="card-enter-1"
-        />
-        <MetricTile
-          label="Acceptance"
-          value={`${Math.round(metrics.acceptance_rate * 100)}%`}
-          sub="last 15 days"
-          accent="green"
-          className="card-enter-2"
-        />
-        <MetricTile
-          label="Avg Response"
-          value={formatDur(metrics.avg_response_seconds)}
-          sub="proposal → decision"
-          className="card-enter-3"
-        />
-        <MetricTile
-          label="Est. Savings"
-          value={`$${(metrics.estimated_savings / 1000).toFixed(0)}K`}
-          sub="this quarter"
-          accent="green"
-          className="card-enter-4"
-        />
-        <MetricTile
-          label="Effectiveness"
-          value={`${Math.round(metrics.effectiveness_rate * 100)}%`}
-          sub="post-hoc outcome"
-          accent="blue"
-          className="card-enter-5"
-        />
-        <MetricTile
-          label="Pending Review"
-          value={metrics.pending_review}
-          sub={metrics.pending_review > 0 ? "needs your decision" : "all clear"}
-          accent={metrics.pending_review > 0 ? "amber" : "green"}
-          className="card-enter-6"
-        />
-      </div>
-
-      {/* Tabs */}
-      <div className="flex items-center border-b border-slate-200 mb-5">
-        {TABS.map((t) => {
-          const active = t === tab;
-          const Icon =
-            t === "Decisions"
-              ? MessageSquare
-              : t === "Performance"
-                ? BarChart3
-                : t === "Configuration"
-                  ? Sliders
-                  : Activity;
-          return (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className="relative px-4 py-3 text-[13px] font-semibold flex items-center gap-2 transition-colors"
-              style={{ color: active ? "#2563EB" : "#64748B" }}
-            >
-              <Icon className="w-3.5 h-3.5" />
-              {t}
-              {active && (
-                <span
-                  className="absolute left-0 right-0 bottom-[-1px] h-[2px] rounded-full"
-                  style={{
-                    background:
-                      "linear-gradient(90deg, #2563EB 0%, #7C3AED 100%)",
-                  }}
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Tab bodies */}
-      {tab === "Decisions" && (
-        <div className="space-y-4">
-          {/* Filter chips */}
-          <div className="flex items-center gap-2 mb-1">
-            <FilterChip
-              active={runFilter === "all"}
-              onClick={() => setRunFilter("all")}
-            >
-              All · {runs.length}
-            </FilterChip>
-            <FilterChip
-              active={runFilter === "pending"}
-              onClick={() => setRunFilter("pending")}
-              accent="amber"
-            >
-              Pending · {runs.filter((r) => r.status === "proposed" || r.status === "notified").length}
-            </FilterChip>
-            <FilterChip
-              active={runFilter === "executed"}
-              onClick={() => setRunFilter("executed")}
-              accent="green"
-            >
-              Executed · {runs.filter((r) => r.status === "executed").length}
-            </FilterChip>
-            <FilterChip
-              active={runFilter === "rejected"}
-              onClick={() => setRunFilter("rejected")}
-              accent="red"
-            >
-              Rejected · {runs.filter((r) => r.status === "rejected").length}
-            </FilterChip>
-          </div>
-
-          {filteredRuns.slice(0, 24).map((run, i) => (
-            <DecisionCard
-              key={run.id}
-              run={run}
-              onApprove={approveRun}
-              onReject={rejectRun}
-              defaultOpen={i === 0}
-            />
-          ))}
-          {filteredRuns.length > 24 && (
-            <div className="text-center text-[12px] text-slate-500 py-4">
-              Showing 24 of {filteredRuns.length} runs · Load more
-            </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <Link href="/decisions-ledger" className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11.5px] font-bold tracking-wide text-[#475569]"
+            style={{ background: "#FFFFFF", border: "1px solid rgba(15,23,42,0.1)" }}>
+            <FileText className="w-3.5 h-3.5" />
+            Decisions ledger
+          </Link>
+          {agent.feedsPages[0] && (
+            <Link href={agent.feedsPages[0]} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-[11.5px] font-bold tracking-wide text-white"
+              style={{ background: `linear-gradient(135deg, ${agent.accent}, ${agent.accent}CC)`, boxShadow: `0 2px 8px ${agent.accent}40` }}>
+              Open surface <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           )}
         </div>
-      )}
-
-      {tab === "Performance" && <PerformanceTab runs={runs} />}
-      {tab === "Configuration" && <ConfigurationTab agent={agent} />}
-      {tab === "Activity" && <ActivityTab runs={runs} />}
-    </div>
-  );
-}
-
-function Meta({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className="font-semibold uppercase tracking-[0.08em] text-[10px] text-slate-400">
-        {label}
-      </span>
-      <span className="font-mono font-medium text-slate-700">{children}</span>
-    </span>
-  );
-}
-
-function FilterChip({
-  active,
-  onClick,
-  children,
-  accent,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-  accent?: "amber" | "green" | "red";
-}) {
-  const accentColor =
-    accent === "amber"
-      ? "#D97706"
-      : accent === "green"
-        ? "#059669"
-        : accent === "red"
-          ? "#DC2626"
-          : "#2563EB";
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="px-3 py-1.5 rounded-full text-[11.5px] font-semibold transition-all"
-      style={{
-        background: active ? accentColor : "rgba(15,23,42,0.04)",
-        color: active ? "#FFFFFF" : "#475569",
-        border: active
-          ? `1px solid ${accentColor}`
-          : "1px solid rgba(15,23,42,0.06)",
-      }}
-    >
-      {children}
-    </button>
-  );
-}
-
-function formatDur(s: number) {
-  if (s < 60) return `${s}s`;
-  return `${Math.floor(s / 60)}m ${s % 60}s`;
-}
-
-function PerformanceTab({ runs }: { runs: AgentRun[] }) {
-  // Aggregate daily counts for a simple SVG bar chart
-  const byDay = useMemo(() => {
-    const map = new Map<string, { executed: number; rejected: number }>();
-    for (const r of runs) {
-      const d = new Date(r.triggered_at).toISOString().slice(0, 10);
-      if (!map.has(d)) map.set(d, { executed: 0, rejected: 0 });
-      const bucket = map.get(d)!;
-      if (r.status === "executed") bucket.executed++;
-      else if (r.status === "rejected") bucket.rejected++;
-    }
-    return Array.from(map.entries())
-      .sort()
-      .slice(-14)
-      .map(([d, v]) => ({ day: d, ...v }));
-  }, [runs]);
-
-  const maxDay = Math.max(1, ...byDay.map((b) => b.executed + b.rejected));
-
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-      <div className="solid-card p-5">
-        <div className="flex items-baseline justify-between mb-4">
-          <h3 className="text-[13px] font-bold text-slate-900">Daily Activity — last 14 days</h3>
-          <span className="text-[11px] text-slate-400">Executed vs Rejected</span>
-        </div>
-        <div className="h-[200px] flex items-end gap-1.5">
-          {byDay.map((d) => (
-            <div
-              key={d.day}
-              className="flex-1 flex flex-col-reverse gap-0.5 h-full"
-              title={`${d.day}: ${d.executed} executed, ${d.rejected} rejected`}
-            >
-              <div
-                className="w-full rounded-sm"
-                style={{
-                  background: "linear-gradient(180deg, #10B981 0%, #059669 100%)",
-                  height: `${(d.executed / maxDay) * 180}px`,
-                }}
-              />
-              <div
-                className="w-full rounded-sm"
-                style={{
-                  background: "linear-gradient(180deg, #EF4444 0%, #DC2626 100%)",
-                  height: `${(d.rejected / maxDay) * 180}px`,
-                }}
-              />
-            </div>
-          ))}
-        </div>
-        <div className="flex items-center gap-4 mt-3 text-[10.5px] text-slate-500">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-sm bg-emerald-500" /> Executed
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-sm bg-red-500" /> Rejected
-          </span>
-        </div>
-      </div>
-
-      <div className="solid-card p-5">
-        <h3 className="text-[13px] font-bold text-slate-900 mb-4">Outcome Distribution</h3>
-        <div className="space-y-3">
-          <OutcomeRow
-            label="Effective"
-            value={runs.filter((r) => r.outcome?.effective).length}
-            total={runs.filter((r) => r.outcome).length}
-            color="#059669"
-          />
-          <OutcomeRow
-            label="Ineffective"
-            value={
-              runs.filter((r) => r.outcome && !r.outcome.effective).length
-            }
-            total={runs.filter((r) => r.outcome).length}
-            color="#D97706"
-          />
-        </div>
-
-        <div className="border-t border-slate-100 mt-5 pt-4">
-          <h3 className="text-[13px] font-bold text-slate-900 mb-3">Impact — this quarter</h3>
-          <div className="space-y-2.5 text-[12.5px]">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600">Avg fatigue reduction</span>
-              <span className="font-mono font-semibold text-slate-900">−12.4 pts</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600">Compliance breaches prevented</span>
-              <span className="font-mono font-semibold text-slate-900">31</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600">Unplanned OT prevented</span>
-              <span className="font-mono font-semibold text-emerald-700">$52,340</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-slate-600">Avg manager time saved</span>
-              <span className="font-mono font-semibold text-slate-900">2.8 hrs/wk</span>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
 }
 
-function OutcomeRow({
-  label,
-  value,
-  total,
-  color,
-}: {
-  label: string;
-  value: number;
-  total: number;
-  color: string;
-}) {
-  const pct = total > 0 ? (value / total) * 100 : 0;
+function Capabilities({ agent }: { agent: typeof AGENTS[number] }) {
   return (
-    <div>
-      <div className="flex items-center justify-between text-[12.5px] mb-1.5">
-        <span className="text-slate-700 font-medium">{label}</span>
-        <span className="text-slate-500 font-mono">
-          <span className="font-semibold text-slate-900">{value}</span> / {total}
-        </span>
+    <div className="rounded-2xl p-5" style={{ background: "#FFFFFF", border: "1px solid rgba(15,23,42,0.06)", boxShadow: "0 2px 16px rgba(15,23,42,0.06)" }}>
+      <div className="flex items-center gap-1.5 mb-3">
+        <Zap className="w-3.5 h-3.5" style={{ color: agent.accent }} />
+        <span className="text-[10px] font-bold tracking-[0.22em] uppercase" style={{ color: agent.accent }}>Scope & capability</span>
       </div>
-      <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-        <div
-          className="h-full rounded-full"
-          style={{ width: `${pct}%`, background: color }}
-        />
-      </div>
-    </div>
-  );
-}
-
-function ConfigurationTab({ agent }: { agent: ReturnType<typeof getAgent> }) {
-  if (!agent) return null;
-  return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <div className="solid-card p-5">
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-3">
-          Triggers
-        </h3>
-        <div className="space-y-2.5">
-          {agent.config.triggers.map((t, i) => (
-            <div
-              key={i}
-              className="p-2.5 rounded-lg text-[12.5px]"
-              style={{
-                background: "rgba(37,99,235,0.03)",
-                border: "1px solid rgba(37,99,235,0.08)",
-              }}
-            >
-              <div className="font-mono font-semibold text-slate-900">{t.type}</div>
-              {t.threshold !== undefined && (
-                <div className="text-[11px] text-slate-500 mt-0.5">
-                  threshold ≥ {t.threshold}
-                </div>
-              )}
-              {t.window && (
-                <div className="text-[11px] text-slate-500 mt-0.5">
-                  window: {t.window}
-                </div>
-              )}
-            </div>
-          ))}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <div className="text-[9.5px] font-bold tracking-[0.14em] uppercase text-[#94A3B8] mb-1">Scope</div>
+          <div className="text-[12.5px] text-[#0F172A] leading-relaxed">{agent.scope}</div>
         </div>
-      </div>
-
-      <div className="solid-card p-5">
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-3">
-          Actions
-        </h3>
-        <div className="space-y-2.5">
-          {agent.config.actions.map((a, i) => (
-            <div
-              key={i}
-              className="p-2.5 rounded-lg text-[12.5px]"
-              style={{
-                background: "rgba(124,58,237,0.03)",
-                border: "1px solid rgba(124,58,237,0.08)",
-              }}
-            >
-              <div className="font-mono font-semibold text-slate-900">{a.type}</div>
-              {a.channel && (
-                <div className="text-[11px] text-slate-500 mt-0.5">
-                  via {a.channel}
-                </div>
-              )}
-            </div>
-          ))}
+        <div>
+          <div className="text-[9.5px] font-bold tracking-[0.14em] uppercase text-[#94A3B8] mb-1">Source</div>
+          <div className="text-[11.5px] font-mono text-[#475569] leading-relaxed break-all">{agent.source}</div>
         </div>
-      </div>
-
-      <div className="solid-card p-5">
-        <h3 className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400 mb-3">
-          Guardrails
-        </h3>
-        <div className="space-y-2.5 text-[12.5px]">
-          <GuardrailRow
-            label="Jurisdiction"
-            value={agent.config.guardrails.jurisdiction}
-          />
-          <GuardrailRow
-            label="Max decisions/hr"
-            value={agent.config.guardrails.max_decisions_per_hour}
-          />
-          <GuardrailRow
-            label="Off-hours policy"
-            value={agent.config.guardrails.off_hours_autonomy ?? "same"}
-          />
-          <GuardrailRow
-            label="Dry-run"
-            value={agent.config.guardrails.dry_run ? "on" : "off"}
-          />
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400 mb-1.5">
-              Always human-approve if
-            </div>
-            {agent.config.guardrails.require_human_approval_if.map((rule) => (
-              <span
-                key={rule}
-                className="badge badge-amber inline-flex mr-1 mb-1 text-[10px]"
-              >
-                {rule}
+        <div>
+          <div className="text-[9.5px] font-bold tracking-[0.14em] uppercase text-[#94A3B8] mb-1">Writes to</div>
+          <div className="flex flex-wrap gap-1">
+            {agent.writesTo.map((t) => (
+              <span key={t} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold"
+                style={{ background: `${agent.accent}10`, color: agent.accent, border: `1px solid ${agent.accent}26` }}>
+                <Database className="w-2.5 h-2.5" />
+                {t}
               </span>
             ))}
           </div>
         </div>
+        <div>
+          <div className="text-[9.5px] font-bold tracking-[0.14em] uppercase text-[#94A3B8] mb-1">Feeds pages</div>
+          <div className="flex flex-wrap gap-1">
+            {agent.feedsPages.map((p) => (
+              <Link key={p} href={p} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px] font-semibold hover:underline"
+                style={{ background: "rgba(37,99,235,0.06)", color: "#2563EB", border: "1px solid rgba(37,99,235,0.2)" }}>
+                {p}
+                <ExternalLink className="w-2.5 h-2.5" />
+              </Link>
+            ))}
+          </div>
+        </div>
+        {agent.notifies && agent.notifies.length > 0 && (
+          <div className="md:col-span-2">
+            <div className="text-[9.5px] font-bold tracking-[0.14em] uppercase text-[#94A3B8] mb-1">Notifies</div>
+            <div className="flex flex-wrap gap-1">
+              {agent.notifies.map((n) => (
+                <span key={n} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10.5px]"
+                  style={{ background: "rgba(15,23,42,0.03)", color: "#475569", border: "1px solid rgba(15,23,42,0.08)" }}>
+                  {n}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function GuardrailRow({ label, value }: { label: string; value: string | number }) {
+function RecentDecisions({ decisions }: { decisions: typeof WORK_ORDERS }) {
   return (
-    <div className="flex items-center justify-between">
-      <span className="text-slate-500">{label}</span>
-      <span className="font-mono font-semibold text-slate-900">{value}</span>
+    <div className="rounded-2xl overflow-hidden" style={{ background: "#FFFFFF", border: "1px solid rgba(15,23,42,0.06)", boxShadow: "0 2px 16px rgba(15,23,42,0.06)" }}>
+      <div className="px-5 py-4 flex items-center gap-2 border-b border-slate-100">
+        <Activity className="w-3.5 h-3.5 text-[#7C3AED]" />
+        <div>
+          <div className="text-[12.5px] font-bold text-[#0F172A] leading-tight">Recent decisions with reasoning</div>
+          <div className="text-[10.5px] text-[#64748B]">Every dispatch with the factor breakdown that drove it</div>
+        </div>
+        <Link href="/decisions-ledger" className="ml-auto text-[10.5px] font-bold text-[#2563EB] hover:underline">
+          Full ledger →
+        </Link>
+      </div>
+      <div className="divide-y divide-slate-50">
+        {decisions.slice(0, 8).map((w) => {
+          const trade = TRADE_META[w.trade];
+          const assignee = w.assigneeId ? workerById(w.assigneeId) : null;
+          const building = PORTFOLIO_DATA.find((b) => b.id === w.buildingId);
+          return (
+            <div key={w.id} className="px-5 py-3 hover:bg-[#F8FAFC] transition-colors">
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-[14px]"
+                  style={{ background: `${trade.color}14`, border: `1px solid ${trade.color}30` }}
+                >
+                  {trade.icon}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                    <span className="text-[12px] font-bold text-[#0F172A]">{w.title}</span>
+                    <span className="text-[10px] text-[#64748B]">· {building?.name}</span>
+                    {w.autoAssigned && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold tracking-[0.1em] uppercase"
+                        style={{ background: "rgba(124,58,237,0.08)", color: "#7C3AED", border: "1px solid rgba(124,58,237,0.26)" }}>
+                        <Sparkles className="w-2.5 h-2.5" />
+                        AUTO · score {w.score}
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-[10.5px] text-[#475569] mb-1">
+                    → <span className="font-semibold">{assignee?.type === "contractor" ? assignee.company : assignee?.name}</span>
+                  </div>
+                  {w.rationale && (
+                    <div className="text-[10.5px] text-[#64748B] italic leading-snug">&ldquo;{w.rationale}&rdquo;</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
 
-function ActivityTab({ runs }: { runs: AgentRun[] }) {
-  const events = useMemo(() => {
-    return runs
-      .slice(0, 40)
-      .flatMap((r) => {
-        const list: { ts: string; icon: string; actor: string; text: string; runId: string }[] = [];
-        list.push({
-          ts: r.triggered_at,
-          icon: "⚡",
-          actor: "MAIA",
-          text: `triggered on ${r.trigger_payload.staff_name} — ${r.trigger_type}`,
-          runId: r.id,
-        });
-        if (r.approved_at && r.approved_by) {
-          list.push({
-            ts: r.approved_at,
-            icon: r.status === "rejected" ? "✕" : "✓",
-            actor: r.approved_by,
-            text: `${r.status === "rejected" ? "rejected" : "approved"} ${r.id}`,
-            runId: r.id,
-          });
-        }
-        if (r.executed_at) {
-          list.push({
-            ts: r.executed_at,
-            icon: "→",
-            actor: "MAIA",
-            text: `executed reassignment for ${r.trigger_payload.staff_name}`,
-            runId: r.id,
-          });
-        }
-        if (r.outcome) {
-          list.push({
-            ts: r.outcome.observed_at,
-            icon: r.outcome.effective ? "✓" : "·",
-            actor: "MAIA",
-            text: `outcome observed: ${r.outcome.effective ? "effective" : "ineffective"}`,
-            runId: r.id,
-          });
-        }
-        return list;
-      })
-      .sort((a, b) => new Date(b.ts).getTime() - new Date(a.ts).getTime())
-      .slice(0, 60);
-  }, [runs]);
-
+function KnowledgeReferences({ docs }: { docs: ReturnType<typeof docsByAgent> }) {
+  if (docs.length === 0) return null;
   return (
-    <div className="solid-card p-5">
-      <div className="flex items-baseline justify-between mb-4">
-        <h3 className="text-[13px] font-bold text-slate-900">Append-only event log</h3>
-        <span className="text-[10.5px] font-mono text-slate-400 uppercase tracking-wider">
-          Decisions Ledger · Read-only
-        </span>
+    <div className="rounded-2xl p-5" style={{ background: "linear-gradient(135deg, rgba(124,58,237,0.04), #FFFFFF 60%)", border: "1px solid rgba(124,58,237,0.22)" }}>
+      <div className="flex items-center gap-1.5 mb-3">
+        <BookOpen className="w-3.5 h-3.5 text-[#7C3AED]" />
+        <span className="text-[10px] font-bold tracking-[0.22em] uppercase text-[#7C3AED]">Knowledge referenced by this agent</span>
+        <span className="ml-auto text-[10px] text-[#94A3B8]">{docs.length} documents</span>
       </div>
-      <div className="space-y-0 relative">
-        <div
-          aria-hidden
-          className="absolute left-[9px] top-3 bottom-3 w-[1px] bg-slate-100"
-        />
-        {events.map((e, i) => (
-          <div
-            key={i}
-            className="relative flex items-center gap-3 py-2 pl-7 pr-2 rounded-lg text-[12px] hover:bg-slate-50/50 transition-colors group"
-          >
-            <span
-              className="absolute left-0 w-[18px] h-[18px] rounded-full flex items-center justify-center font-mono text-[10px] bg-white border"
-              style={{
-                borderColor: "rgba(15,23,42,0.12)",
-                color: e.icon === "✓" ? "#059669" : e.icon === "✕" ? "#DC2626" : "#475569",
-              }}
-            >
-              {e.icon}
-            </span>
-            <span className="font-mono text-[10.5px] text-slate-400 w-[92px] shrink-0">
-              {new Date(e.ts).toLocaleString("en-US", {
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-              })}
-            </span>
-            <span className="font-semibold text-slate-700 w-[110px] shrink-0 truncate">
-              {e.actor}
-            </span>
-            <span className="text-slate-600 flex-1 truncate">{e.text}</span>
-            <span className="text-[10px] font-mono text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity">
-              {e.runId}
-            </span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+        {docs.map((d) => {
+          const meta = CATEGORY_META[d.category];
+          return (
+            <Link key={d.id} href={`/knowledge/${d.id}`} className="rounded-xl p-3 hover:shadow-md transition-all"
+              style={{ background: "#FFFFFF", border: `1px solid ${meta.color}22` }}>
+              <div className="flex items-start gap-2">
+                <span className="text-[16px] shrink-0">{meta.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5 flex-wrap">
+                    <span className="inline-flex items-center gap-1 px-1 rounded text-[9px] font-bold tracking-[0.12em] uppercase"
+                      style={{ background: `${meta.color}12`, color: meta.color, border: `1px solid ${meta.color}26` }}>
+                      {meta.label}
+                    </span>
+                    {d.jurisdiction && <span className="text-[9.5px] text-[#94A3B8] font-mono">{d.jurisdiction}</span>}
+                  </div>
+                  <div className="text-[12px] font-bold text-[#0F172A] leading-tight mb-0.5">{d.title}</div>
+                  <div className="text-[10.5px] text-[#64748B] leading-snug line-clamp-2">{d.summary}</div>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function ExplainFactors({ agent }: { agent: typeof AGENTS[number] }) {
+  if (agent.id !== "dispatch_agent") return null;
+  const factors = [
+    { label: "Skill match",         urgentW: 0.22, routineW: 0.20, desc: "Trade match precision. Sub-skill bonuses apply." },
+    { label: "Availability",        urgentW: 0.26, routineW: 0.18, desc: "Real-time load. 100 if available now; drops with active assignments." },
+    { label: "Cost",                urgentW: 0.12, routineW: 0.28, desc: "Lower loaded $/hr scores higher. Employee bonus +3." },
+    { label: "Fairness rotation",   urgentW: 0.14, routineW: 0.22, desc: "Penalises workers above expected share of monthly volume." },
+    { label: "Quality",             urgentW: 0.26, routineW: 0.12, desc: "70% rating + 30% SLA hit rate." },
+  ];
+  return (
+    <div className="rounded-2xl p-5" style={{ background: "#FFFFFF", border: "1px solid rgba(15,23,42,0.06)", boxShadow: "0 2px 16px rgba(15,23,42,0.06)" }}>
+      <div className="flex items-center gap-1.5 mb-3">
+        <Sparkles className="w-3.5 h-3.5" style={{ color: agent.accent }} />
+        <span className="text-[10px] font-bold tracking-[0.22em] uppercase" style={{ color: agent.accent }}>How this agent scores candidates</span>
+      </div>
+      <div className="text-[11.5px] text-[#64748B] leading-relaxed mb-3">
+        Every work order triggers a ranked candidate list. Each candidate gets a 0–100 score combining the five factors below, with weights that shift based on urgency.
+      </div>
+      <div className="space-y-2">
+        {factors.map((f) => (
+          <div key={f.label} className="rounded-lg p-3" style={{ background: "rgba(15,23,42,0.02)", border: "1px solid rgba(15,23,42,0.05)" }}>
+            <div className="flex items-center gap-3 mb-1">
+              <span className="text-[12px] font-bold text-[#0F172A] flex-1">{f.label}</span>
+              <WeightBar label="Urgent" weight={f.urgentW} color="#DC2626" />
+              <WeightBar label="Routine" weight={f.routineW} color="#2563EB" />
+            </div>
+            <div className="text-[10.5px] text-[#64748B] leading-snug">{f.desc}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 rounded-lg p-3 flex items-start gap-2" style={{ background: "rgba(220,38,38,0.04)", border: "1px solid rgba(220,38,38,0.2)" }}>
+        <Shield className="w-3.5 h-3.5 text-rose-500 shrink-0 mt-0.5" />
+        <div className="text-[11px] text-[#475569] leading-snug">
+          <span className="font-bold text-[#991B1B]">Hard gates:</span> contractor must have valid CGL insurance, current WSIB clearance, and active trade license.
+          Any failure forces the candidate&apos;s score to 0 and flags them <code className="font-mono text-[10.5px] bg-slate-100 px-1 rounded">blocked</code>.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WeightBar({ label, weight, color }: { label: string; weight: number; color: string }) {
+  return (
+    <div className="text-right min-w-[56px]">
+      <div className="text-[9px] font-bold tracking-[0.08em] uppercase" style={{ color }}>{label}</div>
+      <div className="text-[11.5px] font-bold tabular-nums" style={{ color }}>{Math.round(weight * 100)}%</div>
+    </div>
+  );
+}
+
+function StatsCard({ agent }: { agent: typeof AGENTS[number] }) {
+  const stats = {
+    decisionsWeek: agent.id === "dispatch_agent" ? 284 :
+                   agent.id === "work_order_market" ? 47 :
+                   agent.id === "arrears_sentinel" ? 62 :
+                   agent.id === "energy_optimizer" ? 1_247 :
+                   agent.id === "compliance_sentinel" ? 38 :
+                   agent.id === "vacancy_watcher" ? 28 :
+                   agent.id === "turnover_orchestrator" ? 14 :
+                   7,
+    autoAssign: agent.id === "dispatch_agent" ? "91%" : agent.id === "energy_optimizer" ? "98%" : "—",
+    acceptance: agent.id === "dispatch_agent" ? "94%" : agent.id === "arrears_sentinel" ? "83%" : "—",
+    savedUsd: agent.id === "energy_optimizer" ? 4_280 :
+              agent.id === "dispatch_agent" ? 11_900 :
+              0,
+  };
+  return (
+    <div className="rounded-2xl p-4" style={{ background: "#FFFFFF", border: "1px solid rgba(15,23,42,0.06)", boxShadow: "0 2px 16px rgba(15,23,42,0.06)" }}>
+      <div className="text-[10px] font-bold tracking-[0.22em] uppercase text-[#64748B] mb-3">Performance · last 7 days</div>
+      <div className="grid grid-cols-2 gap-2">
+        <Stat label="Decisions" value={stats.decisionsWeek.toLocaleString()} accent="#2563EB" />
+        <Stat label="Auto-rate" value={stats.autoAssign} accent="#10B981" />
+        <Stat label="Acceptance" value={stats.acceptance} accent="#7C3AED" />
+        <Stat label="Saved" value={stats.savedUsd > 0 ? `$${stats.savedUsd.toLocaleString()}` : "—"} accent="#F59E0B" />
+      </div>
+    </div>
+  );
+}
+
+function Stat({ label, value, accent }: { label: string; value: string; accent: string }) {
+  return (
+    <div className="rounded-lg p-2.5" style={{ background: `${accent}06`, border: `1px solid ${accent}22` }}>
+      <div className="text-[9px] font-bold tracking-[0.14em] uppercase" style={{ color: accent }}>{label}</div>
+      <div className="text-[16px] font-bold tabular-nums text-[#0F172A] leading-tight mt-0.5">{value}</div>
+    </div>
+  );
+}
+
+function ModelsUsed({ models }: { models: typeof MODELS }) {
+  if (models.length === 0) return null;
+  return (
+    <div className="rounded-2xl p-4" style={{ background: "#FFFFFF", border: "1px solid rgba(15,23,42,0.06)", boxShadow: "0 2px 16px rgba(15,23,42,0.06)" }}>
+      <Link href="/models" className="flex items-center gap-1.5 mb-3 hover:opacity-80">
+        <span className="text-[10px] font-bold tracking-[0.22em] uppercase text-[#64748B]">Models used</span>
+        <span className="ml-auto text-[10.5px] font-bold text-[#2563EB]">all →</span>
+      </Link>
+      <div className="space-y-2">
+        {models.map((m) => (
+          <div key={m.id} className="rounded-lg p-2.5" style={{ background: `${m.accent}06`, border: `1px solid ${m.accent}22` }}>
+            <div className="flex items-center gap-2 mb-0.5">
+              <span className="text-[11.5px] font-bold text-[#0F172A] truncate flex-1">{m.name}</span>
+              <span className="text-[9.5px] font-mono text-[#64748B]">{m.version}</span>
+            </div>
+            <div className="text-[10px] text-[#64748B] leading-snug line-clamp-2">{m.purpose}</div>
           </div>
         ))}
       </div>
     </div>
   );
 }
+
+function AlgorithmsUsed({ algorithms }: { algorithms: typeof ALGORITHMS }) {
+  if (algorithms.length === 0) return null;
+  return (
+    <div className="rounded-2xl p-4" style={{ background: "#FFFFFF", border: "1px solid rgba(15,23,42,0.06)", boxShadow: "0 2px 16px rgba(15,23,42,0.06)" }}>
+      <Link href="/algorithms" className="flex items-center gap-1.5 mb-3 hover:opacity-80">
+        <span className="text-[10px] font-bold tracking-[0.22em] uppercase text-[#64748B]">Algorithms</span>
+        <span className="ml-auto text-[10.5px] font-bold text-[#2563EB]">all →</span>
+      </Link>
+      <div className="space-y-2">
+        {algorithms.map((a) => (
+          <div key={a.id} className="rounded-lg p-2.5" style={{ background: `${a.accent}06`, border: `1px solid ${a.accent}22` }}>
+            <div className="text-[11.5px] font-bold text-[#0F172A] leading-tight mb-0.5">{a.name}</div>
+            <div className="text-[9.5px] text-[#94A3B8] font-mono mb-0.5">{a.complexity}</div>
+            <div className="text-[10px] text-[#64748B] leading-snug line-clamp-2">{a.purpose}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function RulesEnforced() {
+  return (
+    <div className="rounded-2xl p-4" style={{ background: "#FFFFFF", border: "1px solid rgba(15,23,42,0.06)", boxShadow: "0 2px 16px rgba(15,23,42,0.06)" }}>
+      <Link href="/rules" className="flex items-center gap-1.5 mb-3 hover:opacity-80">
+        <span className="text-[10px] font-bold tracking-[0.22em] uppercase text-[#64748B]">Rules enforced</span>
+        <span className="ml-auto text-[10.5px] font-bold text-[#2563EB]">all rules →</span>
+      </Link>
+      <div className="space-y-1.5">
+        {RULE_PACKS.slice(0, 3).map((p) => (
+          <div key={p.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg"
+            style={{ background: `${p.accent}06`, border: `1px solid ${p.accent}22` }}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: p.accent }} />
+            <span className="text-[11px] font-bold text-[#0F172A] flex-1 truncate">{p.name}</span>
+            <span className="text-[9.5px] text-[#94A3B8]">{p.rules.length} rules</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+void AlertTriangle; void Clock; void CheckCircle2;
