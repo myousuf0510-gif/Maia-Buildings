@@ -53,7 +53,7 @@ function generate(): ArrearsTenant[] {
   const now = Date.now();
   const rows: ArrearsTenant[] = [];
   // Generate ~70 tenants in various arrears states
-  const target = 74;
+  const target = 186;
   for (let i = 0; i < target; i++) {
     const b = PORTFOLIO_DATA[Math.floor(rng() * PORTFOLIO_DATA.length)];
     const unit = `${Math.floor(1 + rng() * (b.floors - 1))}${String(Math.floor(1 + rng() * 20)).padStart(2, "0")}`;

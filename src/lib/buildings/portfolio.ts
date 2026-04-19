@@ -113,9 +113,64 @@ function pickClass(r: () => number): BuildingClass {
   return "mixed_use";
 }
 
+// Procedurally derived building names (extends the curated 47 to ~120)
+const VARIANT_SUFFIXES = [
+  "II", "III", "West Tower", "East Tower", "South Annex", "North Annex",
+  "Phase II", "Boulevard", "Court", "Terrace", "Pavilion", "Heights",
+  "Gardens East", "Gardens West", "Square", "Plaza",
+];
+
+const EXTRA_HOODS: { neighbourhood: string; lat: number; lng: number }[] = [
+  { neighbourhood: "Downtown Core",     lat: 43.6532, lng: -79.3832 },
+  { neighbourhood: "Entertainment Dist.", lat: 43.6460, lng: -79.3900 },
+  { neighbourhood: "CityPlace",         lat: 43.6422, lng: -79.3900 },
+  { neighbourhood: "Rosedale",          lat: 43.6795, lng: -79.3816 },
+  { neighbourhood: "Corktown",          lat: 43.6590, lng: -79.3613 },
+  { neighbourhood: "The Pocket",        lat: 43.6760, lng: -79.3390 },
+  { neighbourhood: "Upper Beaches",     lat: 43.6880, lng: -79.2950 },
+  { neighbourhood: "Kingsway",          lat: 43.6502, lng: -79.5055 },
+  { neighbourhood: "Bloor West",        lat: 43.6510, lng: -79.4890 },
+  { neighbourhood: "Weston",            lat: 43.7028, lng: -79.5170 },
+  { neighbourhood: "Rexdale",           lat: 43.7288, lng: -79.5790 },
+  { neighbourhood: "Regent Park",       lat: 43.6609, lng: -79.3625 },
+  { neighbourhood: "Moss Park",         lat: 43.6550, lng: -79.3700 },
+  { neighbourhood: "Trinity-Bellwoods", lat: 43.6470, lng: -79.4150 },
+  { neighbourhood: "Dovercourt",        lat: 43.6610, lng: -79.4310 },
+  { neighbourhood: "Little Portugal",   lat: 43.6486, lng: -79.4288 },
+  { neighbourhood: "Koreatown",         lat: 43.6658, lng: -79.4120 },
+  { neighbourhood: "Chinatown",         lat: 43.6530, lng: -79.3983 },
+  { neighbourhood: "Entertainment North", lat: 43.6560, lng: -79.3910 },
+  { neighbourhood: "Yonge-Eglinton",    lat: 43.7060, lng: -79.3977 },
+  { neighbourhood: "Davisville",        lat: 43.6984, lng: -79.3850 },
+  { neighbourhood: "Summerhill",        lat: 43.6833, lng: -79.3900 },
+  { neighbourhood: "Lawrence Park",     lat: 43.7291, lng: -79.4021 },
+  { neighbourhood: "Humewood",          lat: 43.6890, lng: -79.4270 },
+  { neighbourhood: "Mount Dennis",      lat: 43.6910, lng: -79.4937 },
+  { neighbourhood: "Stouffville",       lat: 43.9710, lng: -79.2435 },
+  { neighbourhood: "Newmarket",         lat: 44.0592, lng: -79.4613 },
+  { neighbourhood: "Aurora",            lat: 44.0065, lng: -79.4504 },
+  { neighbourhood: "King City",         lat: 43.9275, lng: -79.5284 },
+  { neighbourhood: "Bolton",            lat: 43.8719, lng: -79.7361 },
+  { neighbourhood: "Caledon",           lat: 43.8547, lng: -79.8697 },
+  { neighbourhood: "Milton",            lat: 43.5183, lng: -79.8774 },
+  { neighbourhood: "Burlington",        lat: 43.3255, lng: -79.7990 },
+  { neighbourhood: "Hamilton East",     lat: 43.2491, lng: -79.8711 },
+  { neighbourhood: "Dundas",            lat: 43.2668, lng: -79.9548 },
+  { neighbourhood: "Brooklin",          lat: 43.9273, lng: -78.9443 },
+  { neighbourhood: "Oshawa",            lat: 43.8971, lng: -78.8658 },
+];
+
+// Add the extras to the lookup
+for (const h of EXTRA_HOODS) {
+  NEIGHBOURHOODS_COORDS[`__extra__${h.neighbourhood}`] = h;
+}
+
 function generatePortfolio(): Building[] {
   const rng = mulberry32(7_919_031);
   const buildings: Building[] = [];
+  const TOTAL = 120;
+
+  // Phase 1: the curated 47 anchors
   for (let i = 0; i < NAMES.length; i++) {
     const name = NAMES[i];
     const loc = NEIGHBOURHOODS_COORDS[name];
@@ -170,6 +225,88 @@ function generatePortfolio(): Building[] {
       nextInspection,
     });
   }
+
+  // Phase 2: procedurally extend to TOTAL by combining (anchor, suffix) or
+  // spawning new buildings in the extra neighbourhoods.
+  const needed = TOTAL - buildings.length;
+  for (let i = 0; i < needed; i++) {
+    const spawnMode = rng();
+    let baseName: string, loc: { neighbourhood: string; lat: number; lng: number };
+    if (spawnMode < 0.55) {
+      // Variant of an anchor building, same neighbourhood (jitter coords)
+      const base = NAMES[Math.floor(rng() * NAMES.length)];
+      const baseLoc = NEIGHBOURHOODS_COORDS[base];
+      const suffix = VARIANT_SUFFIXES[Math.floor(rng() * VARIANT_SUFFIXES.length)];
+      baseName = `${base.split(/\s+(Lofts|Towers|Residences|Gardens|Place|Commons|Centre|Crossing|Heights|Quarters|Mansions|Flats|Row|Bluff|Park Place|Bayfront)/)[0]} ${suffix}`;
+      loc = {
+        neighbourhood: baseLoc.neighbourhood,
+        lat: baseLoc.lat + (rng() - 0.5) * 0.008,
+        lng: baseLoc.lng + (rng() - 0.5) * 0.010,
+      };
+    } else {
+      // New building in an extra neighbourhood
+      const extra = EXTRA_HOODS[i % EXTRA_HOODS.length];
+      const variants = ["Residences", "Towers", "Lofts", "Court", "Place", "Square", "Commons", "Gardens", "Plaza"];
+      const v = variants[Math.floor(rng() * variants.length)];
+      baseName = `${extra.neighbourhood} ${v}`;
+      loc = {
+        neighbourhood: extra.neighbourhood,
+        lat: extra.lat + (rng() - 0.5) * 0.006,
+        lng: extra.lng + (rng() - 0.5) * 0.008,
+      };
+    }
+
+    const cls = pickClass(rng);
+    const isOffice = cls === "class_a_office" || cls === "class_b_office";
+    const floors = Math.round(isOffice ? 8 + rng() * 30 : 4 + rng() * 26);
+    const units = Math.round(isOffice ? 20 + rng() * 80 : 40 + rng() * 240);
+    const sqftPerUnit = isOffice ? 2_800 + rng() * 3_000 : 680 + rng() * 520;
+    const sqft = Math.round(units * sqftPerUnit);
+    const yearBuilt = Math.round(1975 + rng() * 48);
+    const occupancyPct = Math.round(88 + rng() * 11);
+    const arrearsTenants = Math.floor(units * (0.01 + rng() * 0.06));
+    const openWorkOrders = Math.round(2 + rng() * 18);
+    const overdueWorkOrders = Math.floor(openWorkOrders * (rng() * 0.35));
+    const complianceAlerts = rng() > 0.78 ? 1 + Math.floor(rng() * 3) : 0;
+    const energyKwhPerSqft = +(11 + rng() * 14).toFixed(1);
+    const avgRent = isOffice ? 35 * sqftPerUnit / 12 : 2_100 + rng() * 1_900;
+    const monthlyRevenue = Math.round(units * avgRent * occupancyPct / 100);
+    const inspectionDaysOut = Math.floor(4 + rng() * 120);
+    const nextInspection = new Date(Date.now() + inspectionDaysOut * 86_400_000).toISOString().slice(0, 10);
+
+    const occupancyScore = (occupancyPct - 80) * 4;
+    const arrearsPenalty = (arrearsTenants / units) * 300;
+    const overduePenalty = overdueWorkOrders * 3;
+    const compliancePenalty = complianceAlerts * 8;
+    let health = 80 + occupancyScore - arrearsPenalty - overduePenalty - compliancePenalty;
+    health += (rng() - 0.5) * 8;
+    const healthScore = Math.max(12, Math.min(99, Math.round(health)));
+
+    const idx = buildings.length;
+    buildings.push({
+      id: `bldg-${String(idx + 1).padStart(3, "0")}`,
+      name: baseName.trim(),
+      address: generateAddress(rng, loc.neighbourhood),
+      neighbourhood: loc.neighbourhood,
+      lat: loc.lat,
+      lng: loc.lng,
+      class: cls,
+      floors,
+      units,
+      sqft,
+      yearBuilt,
+      occupancyPct,
+      arrearsTenants,
+      openWorkOrders,
+      overdueWorkOrders,
+      healthScore,
+      energyKwhPerSqft,
+      monthlyRevenue,
+      complianceAlerts,
+      nextInspection,
+    });
+  }
+
   return buildings;
 }
 

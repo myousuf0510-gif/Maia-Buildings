@@ -10,12 +10,12 @@ export const PORTFOLIO = {
   name: "Royal York Property Management",
   shortName: "Royal York",
   region: "Greater Toronto Area",
-  buildingCount: 47,
-  unitCount: 4_200,
-  residentCount: 8_400,
-  rentUnderManagement: 128_000_000, // annual $
-  ownerTeamSize: 86, // PM staff + in-house maintenance
-  contractorPoolSize: 142, // vetted vendors
+  buildingCount: 120,
+  unitCount: 11_400,
+  residentCount: 22_800,
+  rentUnderManagement: 342_000_000, // annual $
+  ownerTeamSize: 132, // PM staff + in-house maintenance
+  contractorPoolSize: 214, // vetted vendors
 };
 
 // ─── Agents ──────────────────────────────────────────────────────────────────

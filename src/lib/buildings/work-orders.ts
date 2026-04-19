@@ -76,7 +76,7 @@ function generateOrders(): WorkOrder[] {
   const rng = mulberry32(1_618_033);
   const orders: WorkOrder[] = [];
   const now = Date.now();
-  const count = 48;  // active + recent orders
+  const count = 240;  // active + recent orders across the full portfolio
   for (let i = 0; i < count; i++) {
     const tpl = TICKET_TEMPLATES[Math.floor(rng() * TICKET_TEMPLATES.length)];
     const building = PORTFOLIO_DATA[Math.floor(rng() * PORTFOLIO_DATA.length)];

@@ -28,6 +28,9 @@ import {
   Newspaper,
   BookOpen,
   Plug,
+  UserSquare,
+  BarChart3,
+  Award,
 } from "lucide-react";
 
 const navItems = [
@@ -45,6 +48,8 @@ const navItems = [
         items: [
           { href: "/portfolio-map", icon: Map, label: "Portfolio Map", badge: "LIVE" },
           { href: "/building-detail", icon: Building2, label: "Building Detail" },
+          { href: "/tenants", icon: UserSquare, label: "Tenants" },
+          { href: "/reports", icon: BarChart3, label: "Financial Reports" },
         ],
       },
       {
@@ -61,6 +66,7 @@ const navItems = [
         items: [
           { href: "/work-order-market", icon: Wrench, label: "Work Order Market", badge: "LIVE" },
           { href: "/workforce-directory", icon: Users, label: "Workforce Directory" },
+          { href: "/vendor-performance", icon: Award, label: "Vendor Performance" },
           { href: "/maintenance-recommendations", icon: Hammer, label: "Maintenance Recs" },
         ],
       },

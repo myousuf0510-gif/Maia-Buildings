@@ -57,7 +57,7 @@ function generateVacating(): VacatingUnit[] {
   const now = Date.now();
   const units: VacatingUnit[] = [];
   // Generate about 0.7% of units currently turning over
-  const target = 28;
+  const target = 68;
   for (let i = 0; i < target; i++) {
     const b: Building = PORTFOLIO_DATA[Math.floor(rng() * PORTFOLIO_DATA.length)];
     const stage = STAGES[Math.floor(rng() * STAGES.length)];
@@ -99,7 +99,7 @@ function generateLeaseExpiries(): LeaseExpiry[] {
   const rng = mulberry32(8_192_003);
   const now = Date.now();
   const rows: LeaseExpiry[] = [];
-  const target = 64;
+  const target = 180;
   for (let i = 0; i < target; i++) {
     const b = PORTFOLIO_DATA[Math.floor(rng() * PORTFOLIO_DATA.length)];
     const daysOut = Math.floor(5 + rng() * 110);
