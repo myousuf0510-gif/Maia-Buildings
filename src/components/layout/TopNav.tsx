@@ -8,8 +8,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useGlobalFilter } from "@/lib/GlobalFilterContext";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
-import { LiveAgentIndicator } from "@/components/agents/LiveAgentIndicator";
-import { LivePulseToggle } from "@/components/layout/LivePulseToggle";
 import { AskMaiaModal } from "@/components/ask/AskMaiaModal";
 
 const routeLabels: Record<string, { title: string; subtitle: string }> = {
@@ -125,12 +123,6 @@ export function TopNav() {
         </div>
       </button>
       <AskMaiaModal open={askOpen} onClose={() => setAskOpen(false)} />
-
-      {/* Live Agent indicator — the "MAIA is watching" strip */}
-      <LiveAgentIndicator />
-
-      {/* Live Pulse toggle — command-center mode */}
-      <LivePulseToggle />
 
       {/* API Status */}
       <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg shrink-0"
