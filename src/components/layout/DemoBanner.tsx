@@ -11,31 +11,26 @@
 import { useState } from "react";
 import { useAuth } from "@/lib/AuthContext";
 
-// Fixed demo org IDs (must match seed-demo.ts and seed-demo-expanded.ts)
+// Fixed demo org IDs for Buildings demos
 const DEMO_ORG_IDS = new Set([
-  "00000000-0000-0000-0000-000000000001", // Toronto Pearson Ground Operations
-  "00000000-0000-0000-0000-000000000002", // Toronto General Hospital
-  "00000000-0000-0000-0000-000000000003", // Amazon YYZ Distribution
-  "00000000-0000-0000-0000-000000000004", // Marriott Toronto Downtown
+  "00000000-0000-0000-0000-000000000011", // Royal York Property Management
+  "00000000-0000-0000-0000-000000000012", // Cushman & Wakefield (pilot)
+  "00000000-0000-0000-0000-000000000013", // Greystar Canada (pilot)
 ]);
 
 // Demo org display names
 const DEMO_ORG_LABELS: Record<string, { label: string; industry: string }> = {
-  "00000000-0000-0000-0000-000000000001": {
-    label: "Toronto Pearson Ground Operations",
-    industry: "✈️ Aviation",
+  "00000000-0000-0000-0000-000000000011": {
+    label: "Royal York Property Management",
+    industry: "🏢 Multi-family residential",
   },
-  "00000000-0000-0000-0000-000000000002": {
-    label: "Toronto General Hospital",
-    industry: "🏥 Healthcare",
+  "00000000-0000-0000-0000-000000000012": {
+    label: "Cushman & Wakefield",
+    industry: "🏙️ Commercial property management",
   },
-  "00000000-0000-0000-0000-000000000003": {
-    label: "Amazon YYZ Distribution",
-    industry: "📦 Logistics",
-  },
-  "00000000-0000-0000-0000-000000000004": {
-    label: "Marriott Toronto Downtown",
-    industry: "🏨 Hospitality",
+  "00000000-0000-0000-0000-000000000013": {
+    label: "Greystar Canada",
+    industry: "🏠 Multi-family residential",
   },
 };
 

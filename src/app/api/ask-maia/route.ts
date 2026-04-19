@@ -1,213 +1,190 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
 /**
  * POST /api/ask-maia
  * body: { question: string }
- * returns: { answer: string, source: 'claude' | 'demo', model?: string, context?: object }
+ * returns: { answer, source, model?, context? }
  *
- * Strategy:
- *   1) Build a compact live-context object from Supabase
- *      (agents snapshot + recent runs + headline metrics).
- *   2) If ANTHROPIC_API_KEY is set, call Claude with that context + the question.
- *   3) Otherwise, pattern-match against the question and return a canned but
- *      realistic answer grounded in the same context. Never break the demo.
+ * Buildings-domain assistant for Royal York Property Management.
  */
 
-const SYSTEM_PROMPT = `You are MAIA, a workforce intelligence assistant for a large aviation ground operations company (Toronto Pearson).
+const SYSTEM_PROMPT = `You are MAIA, a property-intelligence assistant for Royal York Property Management — a 120-building, 11,400-unit residential portfolio across the Greater Toronto Area.
 
-You answer questions from directors, managers, and compliance officers. You have access to live workforce data: staff records, shifts, fatigue scores, compliance signals, cost ledgers, and a log of decisions made by autonomous MAIA Agents.
+You answer questions from property managers, asset managers, the ops director, and the CEO. You have access to live portfolio data: buildings, tenants, leases, work orders, arrears, energy telemetry, compliance obligations, vendor performance, and a log of decisions made by autonomous MAIA Agents.
 
 When answering:
 - Cite specific numbers from the CONTEXT block.
-- Keep it to 2-4 short paragraphs, max ~180 words.
-- If you recommend an action, say "MAIA suggests…" and be specific (who, what, when, why).
+- Keep it to 2–4 short paragraphs, max ~180 words.
+- If you recommend an action, say "MAIA suggests…" and be specific (which building, what action, when, why).
 - Never speculate beyond the provided context. If the data isn't there, say so and suggest what to look at next.
 - Format: plain text with short line breaks. No headers, no bullets unless truly needed for clarity.
-- Confidence tone: use percentages when you can (e.g. "confidence 91%"), otherwise say "high", "moderate", or "low".`;
+- Confidence tone: use percentages when you can (e.g. "confidence 91%"), otherwise say "high", "moderate", or "low".
+- Always stay in the property-management domain. Never reference shifts, fatigue, airport operations, or workforce-specific terminology.`;
 
-async function buildLiveContext() {
-  try {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://iweqvvyfujzdiixsiczz.supabase.co";
-    const key =
-      process.env.SUPABASE_SERVICE_ROLE_KEY ??
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-      "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3ZXF2dnlmdWp6ZGlpeHNpY3p6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ0NzA5NjcsImV4cCI6MjA5MDA0Njk2N30.lKKRoxahbm2fZWIUn7172lrudkzOVQV7WHyxRwjniwA";
-    const sb = createClient(url, key);
-
-    const [agents, pendingRuns, recentRuns] = await Promise.all([
-      sb.from("maia_agents").select("id, name, type, status, autonomy"),
-      sb
-        .from("maia_agent_runs")
-        .select(
-          "id, agent_id, status, confidence_score, trigger_payload, proposed_action, triggered_at",
-        )
-        .in("status", ["proposed", "notified"])
-        .order("triggered_at", { ascending: false })
-        .limit(5),
-      sb
-        .from("maia_agent_runs")
-        .select("id, status, estimated_savings, confidence_score, triggered_at, outcome")
-        .order("triggered_at", { ascending: false })
-        .limit(20),
-    ]);
-
-    const runsTotal = recentRuns.data?.length ?? 0;
-    const executed = recentRuns.data?.filter((r) => r.status === "executed").length ?? 0;
-    const rejected = recentRuns.data?.filter((r) => r.status === "rejected").length ?? 0;
-    const acceptance =
-      executed + rejected > 0 ? executed / (executed + rejected) : 0;
-    const savings =
-      recentRuns.data?.reduce(
-        (s, r) => s + Number(r.estimated_savings ?? 0),
-        0,
-      ) ?? 0;
-
-    return {
-      org: "Toronto Pearson Ground Operations (Aviation)",
-      headline: {
-        active_staff: 820,
-        sla_compliance_pct: 91.2,
-        open_escalations: 23,
-        peer_sla_p50_pct: 92.0,
-        overtime_monthly_usd: 41000,
-        peer_overtime_p50_usd: 41000,
-        estimated_savings_q: 412_000,
-        fatigue_critical_count: 2,
-        fatigue_at_risk_count: 3,
-        open_coverage_gaps_next_7d: 4,
-      },
-      agents: agents.data ?? [],
-      pending_decisions: pendingRuns.data ?? [],
-      recent_decisions_summary: {
-        last_20_runs: runsTotal,
-        executed,
-        rejected,
-        acceptance_rate: Math.round(acceptance * 100),
-        estimated_savings_last20: savings,
-      },
-      critical_fatigue_case: {
-        name: "James Martinez",
-        department: "Ground Operations",
-        fatigue_score: 84,
-        consecutive_shifts: 6,
-        rest_period_hours: 9.2,
-        jurisdiction_min_rest_hours: 11,
-        tier: 1,
-        account_arr_usd: 2_400_000,
-      },
-      labour_law_jurisdiction: "ON-CA",
-    };
-  } catch {
-    // Supabase unavailable — return static fallback
-    return {
-      org: "Toronto Pearson Ground Operations (Aviation)",
-      headline: {
-        active_staff: 820,
-        sla_compliance_pct: 91.2,
-        fatigue_critical_count: 2,
-        estimated_savings_q: 412_000,
-      },
-      agents: [{ name: "Fatigue Guardian", type: "fatigue_guardian", status: "active" }],
-      pending_decisions: [],
-      recent_decisions_summary: {},
-      critical_fatigue_case: {
-        name: "James Martinez",
-        fatigue_score: 84,
-      },
-      source_note: "Supabase unavailable; using fallback snapshot.",
-    };
-  }
+interface BuildingsContext {
+  org: string;
+  headline: {
+    buildings: number;
+    units: number;
+    residents: number;
+    occupancy_pct: number;
+    monthly_rent_under_mgmt_usd: number;
+    open_work_orders: number;
+    overdue_work_orders: number;
+    arrears_tenants: number;
+    arrears_balance_usd: number;
+    compliance_alerts: number;
+  };
+  agents: { name: string; status: string }[];
+  recent_decisions_summary: {
+    total_this_week: number;
+    auto_assigned: number;
+    human_approved: number;
+    acceptance_rate: number;
+    est_savings_week_usd: number;
+  };
+  critical_case: {
+    building: string;
+    unit: string;
+    issue: string;
+    status: string;
+    projected_resolution_hours: number;
+  };
+  jurisdiction: string;
 }
 
-function demoAnswer(question: string, ctx: Record<string, unknown>): string {
+function buildLiveContext(): BuildingsContext {
+  return {
+    org: "Royal York Property Management · GTA",
+    headline: {
+      buildings: 120,
+      units: 11_400,
+      residents: 22_800,
+      occupancy_pct: 94.7,
+      monthly_rent_under_mgmt_usd: 28_500_000,
+      open_work_orders: 186,
+      overdue_work_orders: 14,
+      arrears_tenants: 186,
+      arrears_balance_usd: 412_000,
+      compliance_alerts: 8,
+    },
+    agents: [
+      { name: "Dispatch Agent",              status: "live" },
+      { name: "Work Order Market",           status: "live" },
+      { name: "Vacancy & Turnover Watcher",  status: "live" },
+      { name: "Arrears Sentinel",            status: "live" },
+      { name: "Energy & Utility Optimizer",  status: "live" },
+      { name: "Compliance Sentinel",         status: "live" },
+      { name: "Turnover Orchestrator",       status: "live" },
+      { name: "Briefing Composer",           status: "live" },
+    ],
+    recent_decisions_summary: {
+      total_this_week: 2_847,
+      auto_assigned: 2_588,
+      human_approved: 259,
+      acceptance_rate: 94,
+      est_savings_week_usd: 18_400,
+    },
+    critical_case: {
+      building: "842 Bay St",
+      unit: "1404",
+      issue: "Water leak through living room ceiling",
+      status: "Dispatch Agent auto-assigned Apex Plumbing (ETA 18 min)",
+      projected_resolution_hours: 2,
+    },
+    jurisdiction: "Ontario · RTA + Fire Code + TSSA + WSIB",
+  };
+}
+
+function demoAnswer(question: string, ctx: BuildingsContext): string {
   const q = question.toLowerCase();
 
-  if (q.includes("sick") || q.includes("absent") || q.includes("call in")) {
-    return `Based on fatigue scores, recent attendance, and shift patterns, four staff are at elevated risk of calling in sick this week.
+  if (q.includes("arrears") || q.includes("rent") || q.includes("late") || q.includes("delinquent")) {
+    return `Arrears Sentinel is tracking ${ctx.headline.arrears_tenants} tenants with a combined balance of $${(ctx.headline.arrears_balance_usd / 1000).toFixed(0)}K. Most are early-stage — soft reminders already sent.
 
-James Martinez (fatigue 84/100, 6 consecutive shifts) is the highest-risk: historical base rate for this fatigue band is 3.6× average absenteeism. Anh Nguyen, Ravi Patel, and Marcus Brown are the other three — all crossed the 68-threshold in the last 72 hours.
+Seven tenants are in N4 territory (≥15 days overdue, balance above one month's rent). MAIA has drafted RTA-compliant N4 notices for each — they're waiting on your approval in the Arrears queue.
 
-MAIA suggests pre-confirming Monday's Gate Ops roster with 1 backup picker from Central region. Confidence: high (similar patterns historically led to 3+ no-shows 82% of the time).`;
+MAIA suggests reviewing the N4 queue today: delaying past day 20 adds roughly $180 per tenant in LTB filing prep and pushes average recovery out by 3 weeks. Confidence: high.`;
   }
 
-  if (q.includes("fatigue") || q.includes("martinez") || q.includes("breach")) {
-    return `James Martinez is your most urgent case. Fatigue score 84/100 — critical. Six consecutive shifts (Mar 20–25). Rest period 9.2h falls below the ON-CA 11h minimum, so a labour law violation is already recorded.
+  if (q.includes("work order") || q.includes("dispatch") || q.includes("emergency") || q.includes("leak") || q.includes("flood")) {
+    return `${ctx.headline.open_work_orders} open work orders portfolio-wide, ${ctx.headline.overdue_work_orders} overdue. Dispatch Agent auto-assigned 2,588 of this week's 2,847 orders (91% auto rate).
 
-The Fatigue Guardian proposed a reassignment 14m ago: Night Ramp (Apr 18 22:00) → Morning Gate (Apr 19 06:00). Projected fatigue relief: −14 points. Cost delta: zero. Coverage stays intact.
+Top active case: ${ctx.critical_case.building} Unit ${ctx.critical_case.unit} — ${ctx.critical_case.issue.toLowerCase()}. ${ctx.critical_case.status}. Projected resolution ${ctx.critical_case.projected_resolution_hours}h.
 
-Confidence: 91%. This is waiting on your approval in the Decisions queue. If you wait until tomorrow, probability of breach rises to 87% and est. unplanned OT: $2,140.`;
+MAIA suggests reviewing the Work Order Market for the ${ctx.headline.overdue_work_orders} overdue items — most are routine and can be batch-escalated to their fallback vendor with one click.`;
   }
 
-  if (q.includes("overtime") || q.includes(" ot ") || q.includes("cost")) {
-    return `Current OT spend is $41K/month — sitting at peer p50 for aviation (industry p90 is $82K, so you're safely in band). Gate Operations is the outlier, approaching its weekly $12K cap.
+  if (q.includes("energy") || q.includes("hvac") || q.includes("heat") || q.includes("cost") || q.includes("utility")) {
+    return `Energy Optimizer saved $4,280 last week across 22 buildings by widening overnight HVAC setpoint drift during off-peak TOU windows. Portfolio energy intensity is running 2.3 kWh/sqft below the GTA Class B office benchmark.
 
-MAIA has identified $156.8K in annualized savings across agency avoidance (38%), OT optimization (29%), and absenteeism reduction (18%). 54% actioned to date. True Labour Cost vs payroll gap for the current 820-person roster: $1.26M hidden (14% of payroll).
+Top opportunity: expand BMS integration to 14 more buildings — projected $38K/month incremental savings based on the pilot cohort. The ClimateCare HVAC contract bid came in $38K under incumbent for a 4-building package; MAIA flagged it as a clean swap.
 
-MAIA suggests shifting 1 FTE from part-time to full-time at $4.2K/mo cost, eliminating $8.1K/mo in recurring OT — net +$3.9K/mo.`;
+MAIA suggests reviewing Energy Intelligence → Savings Opportunities. Confidence: 87%.`;
   }
 
-  if (q.includes("coverage") || q.includes("shift") || q.includes("sunday") || q.includes("open")) {
-    return `Shift coverage this week: 96.5% — at industry p50. Three unassigned shifts on Sunday 06:00 in Ground Ops, with roughly 4 hours to the posting-notice deadline.
+  if (q.includes("vacancy") || q.includes("turnover") || q.includes("flip") || q.includes("lease")) {
+    return `Vacancy Watcher is tracking 68 units actively turning over, with 14 flagged as pipeline bottlenecks (painters booked solid, flooring delivery delay). Average expected flip time is 12 days, target is 14.
 
-MAIA identified 2 available certified staff cross-trained in Ramp (Terry Okafor, Anh Nguyen), with 88% acceptance probability based on their last 6 months of voluntary shift pickups. Estimated cost vs agency: −$1,840.
+Projected rent lift across the current flip wave: +$42K/month (+8% average uplift vs. current rents).
 
-MAIA suggests sending offers to both simultaneously with incentive pay (+10%) — historical response-time is 18 minutes.`;
+MAIA suggests adding a second painter vendor to the rotation for buildings in the downtown core — that's where the bottleneck is concentrated. Turnover Orchestrator has a draft posting ready.`;
   }
 
-  if (q.includes("compliance") || q.includes("violation") || q.includes("rest period") || q.includes("labour law")) {
-    return `Five active compliance items across 9 labour-law jurisdictions (ON-CA is primary).
+  if (q.includes("compliance") || q.includes("fire") || q.includes("inspection") || q.includes("tssa") || q.includes("elevator")) {
+    return `Compliance Sentinel is tracking ${ctx.headline.compliance_alerts} active alerts on a ±90-day horizon.
 
-One critical: James Martinez rest-period violation — 9.2h between shifts vs 11h ON-CA minimum. Two warnings: working hours approaching 48h (Mike Rodriguez, Ground Ops), certification expiring in 7 days (Jennifer Liu, Passenger Services). One minor OT overage, resolved.
+Critical right now: Elevator #3 at 622 Lorne Park — TSSA annual inspection overdue by 4 days. Two buildings have fire alarm inspections due in the next 8 days (140 Queen St, 228 Dundas St W); MAIA has pre-booked LCI Fire Safety for both.
 
-MAIA's Compliance Sentinel is running in dry-run mode — it's caught every violation in the last 14 days without auto-executing. Recommend flipping it to Approve-to-Execute once you've reviewed the dry-run log.`;
+One contractor compliance flag: Hydro Electric Inc. — WSIB clearance lapsed. Dispatch Agent has auto-blocked 3 pending assignments until renewal. MAIA suggests escalating to their admin today.`;
   }
 
-  if (q.includes("agent") || q.includes("maia")) {
-    const agents = (ctx.agents as Array<{ name?: string; status?: string }>) ?? [];
-    const active = agents.filter((a) => a.status === "active");
-    const activeNames = active.map((a) => a.name).join(", ") || "Fatigue Guardian";
-    return `You have ${agents.length} MAIA Agents configured. ${active.length} active: ${activeNames}. The rest are in draft (Compliance Sentinel, Demand Watcher).
+  if (q.includes("vendor") || q.includes("contractor") || q.includes("fairness") || q.includes("rotation")) {
+    return `Vendor pool has 214 active contractors. Monthly fairness audit is clean — no single vendor exceeds the 25% share cap in any trade.
 
-Fatigue Guardian has logged 247 decisions this quarter with 94% acceptance rate and est. $412K savings. Average response time from proposal to manager decision: 2m 18s.
+Top performers this month: Apex Plumbing (4.8★, 98% SLA), ClimateCare HVAC (4.8★, 96%), Precision Painters (4.6★). Hydro Electric Inc. is flagged for WSIB lapse.
 
-MAIA suggests activating Compliance Sentinel next — it's been running in dry-run for 11 days and caught 17 violations with zero false positives. Estimated annualized value: $84K in avoided tribunals and audit prep.`;
+MAIA suggests reviewing the Vendor Performance page for a contract renegotiation with ClimateCare — their volume has grown 34% QoQ and they're underpriced against market rate by ~12%.`;
   }
 
-  if (q.includes("peer") || q.includes("benchmark") || q.includes("industry") || q.includes("compare")) {
-    return `Against the 127 aviation ops orgs in the MAIA benchmarks network, you're sitting at:
+  if (q.includes("agent") || q.includes("maia") || q.includes("autonomous")) {
+    const agents = ctx.agents;
+    const active = agents.filter((a) => a.status === "live");
+    return `You have ${agents.length} MAIA Agents running across the portfolio — all ${active.length} are live.
 
-P52 for SLA compliance (91.2% vs industry p50 92.0%) — slightly below median, recoverable this quarter.
-P48 for OT spend ($41K/mo vs p50 $41K) — at median, no action needed.
-P34 for forecast accuracy (88% vs p50 83%) — top third, your demand model is working.
-P71 for compliance violations — 7 this quarter vs p50 of 4. This is the weakest benchmark — MAIA suggests this is where to focus.`;
+Busiest this week: Dispatch Agent (${ctx.recent_decisions_summary.auto_assigned} auto-assignments), Energy Optimizer (continuous optimization across 22 BMS-integrated buildings), Arrears Sentinel (drafted 7 N4 notices for your review).
+
+Total this week: ${ctx.recent_decisions_summary.total_this_week} decisions, ${ctx.recent_decisions_summary.acceptance_rate}% acceptance rate, $${(ctx.recent_decisions_summary.est_savings_week_usd / 1000).toFixed(1)}K estimated savings from executed actions. Confidence: high.`;
+  }
+
+  if (q.includes("occupancy") || q.includes("vacant") || q.includes("portfolio")) {
+    return `Portfolio occupancy is running at ${ctx.headline.occupancy_pct}% across ${ctx.headline.units.toLocaleString()} units — on par with the GTA benchmark for residential.
+
+Monthly rent under management: $${(ctx.headline.monthly_rent_under_mgmt_usd / 1_000_000).toFixed(1)}M. 68 units currently in turnover pipeline.
+
+MAIA suggests focusing on the 8 buildings with health scores below 55 — they account for 40% of overdue work orders and 28% of arrears balance. The Portfolio Map surfaces them as red pins.`;
   }
 
   // Generic
-  return `I can answer workforce, fatigue, compliance, OT, coverage, and agent-activity questions using your live data.
+  return `I can answer questions about arrears, work orders, vacancies, energy, compliance, vendors, or any specific building using your live portfolio data.
 
-Right now I can tell you: 820 active staff, SLA compliance 91.2% (peer p50 92%), 2 critical fatigue cases (James Martinez at the top), 23 open escalations, 3 decisions pending your approval in the Fatigue Guardian queue.
+Right now I can tell you: ${ctx.headline.buildings} buildings · ${ctx.headline.units.toLocaleString()} units · ${ctx.headline.occupancy_pct}% occupancy · $${(ctx.headline.monthly_rent_under_mgmt_usd / 1_000_000).toFixed(1)}M monthly rent. ${ctx.headline.open_work_orders} open work orders, ${ctx.headline.arrears_tenants} arrears cases, ${ctx.headline.compliance_alerts} compliance alerts.
 
-Ask me something specific — e.g. "who's at risk of calling in sick tomorrow", "what's driving the compliance violations", "how much OT are we running vs peers", or "what's the Martinez situation".`;
+Ask me something specific — e.g. "what's happening at 842 Bay Street", "who's most at risk for arrears this month", "which vendors are above their fairness cap", "how much did we save on energy this week".`;
 }
 
 export async function POST(req: NextRequest) {
   let body: { question?: string } = {};
-  try {
-    body = await req.json();
-  } catch {
+  try { body = await req.json(); } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
   const question = (body.question ?? "").trim();
-  if (!question) {
-    return NextResponse.json({ error: "Missing question" }, { status: 400 });
-  }
+  if (!question) return NextResponse.json({ error: "Missing question" }, { status: 400 });
 
-  const ctx = await buildLiveContext();
-  const ctxJson = JSON.stringify(ctx, null, 2);
+  const ctx = buildLiveContext();
 
   const hasKey = Boolean(process.env.ANTHROPIC_API_KEY);
   if (hasKey) {
@@ -216,42 +193,20 @@ export async function POST(req: NextRequest) {
       const resp = await client.messages.create({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 640,
-        system: SYSTEM_PROMPT + "\n\nCONTEXT (live):\n" + ctxJson,
+        system: SYSTEM_PROMPT + "\n\nCONTEXT (live):\n" + JSON.stringify(ctx, null, 2),
         messages: [{ role: "user", content: question }],
       });
-      const text =
-        resp.content[0]?.type === "text" ? resp.content[0].text : "";
-      return NextResponse.json({
-        answer: text,
-        source: "claude",
-        model: resp.model,
-        context_summary: summarizeCtx(ctx),
-      });
+      const text = resp.content[0]?.type === "text" ? resp.content[0].text : "";
+      return NextResponse.json({ answer: text, source: "claude", model: resp.model });
     } catch (err) {
       return NextResponse.json({
-        answer:
-          demoAnswer(question, ctx) +
-          `\n\n(Note: Claude API call failed — falling back to demo answer. ${(err as Error).message})`,
+        answer: demoAnswer(question, ctx) +
+          `\n\n(Note: Claude API call failed — falling back to demo. ${(err as Error).message})`,
         source: "demo",
         error: (err as Error).message,
-        context_summary: summarizeCtx(ctx),
       });
     }
   }
 
-  return NextResponse.json({
-    answer: demoAnswer(question, ctx),
-    source: "demo",
-    context_summary: summarizeCtx(ctx),
-  });
-}
-
-function summarizeCtx(ctx: Record<string, unknown>) {
-  const agents = (ctx.agents as Array<{ name?: string }>) ?? [];
-  const pending = (ctx.pending_decisions as unknown[]) ?? [];
-  return {
-    agents_count: agents.length,
-    pending_decisions: pending.length,
-    org: ctx.org,
-  };
+  return NextResponse.json({ answer: demoAnswer(question, ctx), source: "demo" });
 }

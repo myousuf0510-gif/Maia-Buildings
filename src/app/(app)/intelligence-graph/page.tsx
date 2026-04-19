@@ -38,54 +38,53 @@ const STAFF = [
 
 const STATUSES: RunStatus[] = ["proposed", "notified", "approved", "rejected", "executed", "expired"];
 
-// Per-agent action templates
+// Per-agent action templates — all Buildings domain
 const AGENT_ACTIONS: Record<string, { label: string; savings: number; trigger: string }[]> = {
-  fatigue_guardian: [
-    { label: "Swap night→morning · prevent rest breach", savings: 2140, trigger: "consecutive_shifts_breach" },
-    { label: "Enforce 12h rest · move 3 agents", savings: 3400, trigger: "rest_period_violation" },
-    { label: "Redistribute OT to rested peers", savings: 1890, trigger: "fatigue_threshold_breach" },
+  dispatch_agent: [
+    { label: "Auto-assigned water leak · Apex Plumbing ETA 18 min", savings: 840,  trigger: "coverage_gap" },
+    { label: "Auto-assigned HVAC service · ClimateCare dispatched",   savings: 620,  trigger: "coverage_gap" },
+    { label: "Auto-assigned breaker reset · in-house electrician",   savings: 280,  trigger: "coverage_gap" },
+    { label: "Proposed assignment · awaiting manager approval",      savings: 0,    trigger: "coverage_gap" },
+    { label: "Blocked: Hydro Electric WSIB lapsed · re-routed",      savings: 0,    trigger: "rest_period_violation" },
   ],
-  demand_watcher: [
-    { label: "Post extra morning shift · Sat 08:00", savings: 980, trigger: "coverage_gap" },
-    { label: "Reduce afternoon coverage · overstaffed", savings: 1200, trigger: "coverage_gap" },
-    { label: "Alert: +34% pax volume forecast", savings: 0, trigger: "cost_spike" },
+  work_order_market: [
+    { label: "Posted Fri 22:00 Baggage coverage to market",          savings: 420,  trigger: "coverage_gap" },
+    { label: "Offer accepted by Precision Painters in 6 min",        savings: 180,  trigger: "coverage_gap" },
+    { label: "Turnover repaint posted · 3 candidates",               savings: 0,    trigger: "coverage_gap" },
   ],
-  shift_market: [
-    { label: "Post 3 open shifts to market", savings: 840, trigger: "coverage_gap" },
-    { label: "Matched offer accepted in 3 min", savings: 420, trigger: "coverage_gap" },
+  vacancy_watcher: [
+    { label: "12 units vacating in 30 days · flip pipeline built",   savings: 0,    trigger: "cost_spike" },
+    { label: "Projected rent lift +$1,240/mo · Unit 1404",           savings: 1240, trigger: "cost_spike" },
+    { label: "Bottleneck flag: painters booked solid through Apr 30",savings: 0,    trigger: "cost_spike" },
+    { label: "Lease renewal probability 0.82 · Unit 704",            savings: 0,    trigger: "cost_spike" },
   ],
-  incentive_optimizer: [
-    { label: "Round 2 pricing at $160 premium", savings: 0, trigger: "coverage_gap" },
-    { label: "Fairness-first: rotate candidate order", savings: 280, trigger: "coverage_gap" },
+  arrears_sentinel: [
+    { label: "Soft reminder sent · 6 tenants at day 3",              savings: 0,    trigger: "cost_spike" },
+    { label: "N4 drafted · awaiting manager approval",               savings: 0,    trigger: "rest_period_violation" },
+    { label: "Payment plan approved · 3-installment schedule",       savings: 0,    trigger: "cost_spike" },
+    { label: "Delinquency risk 0.78 flagged · collections notified", savings: 0,    trigger: "cost_spike" },
   ],
-  timeoff_watcher: [
-    { label: "Auto-approve March break window", savings: 0, trigger: "coverage_gap" },
-    { label: "Deny request · blackout Dec 24", savings: 0, trigger: "coverage_gap" },
-    { label: "Approve with demand confidence 92%", savings: 0, trigger: "coverage_gap" },
+  energy_optimizer: [
+    { label: "Tightened overnight HVAC setpoints · 22 buildings",    savings: 4_280, trigger: "cost_spike" },
+    { label: "Pool pump schedule re-aligned · off-peak only",        savings: 890,   trigger: "cost_spike" },
+    { label: "Lobby lighting dimmed during low occupancy window",    savings: 340,   trigger: "cost_spike" },
+    { label: "BMS override issued · setpoint 21°C → 19°C overnight", savings: 620,   trigger: "cost_spike" },
   ],
   compliance_sentinel: [
-    { label: "CATSA recert booking · E. Ng", savings: 1200, trigger: "certification_expiring" },
-    { label: "De-icing cert lapse watch · 2 agents", savings: 2200, trigger: "certification_expiring" },
+    { label: "Fire alarm inspection auto-booked · LCI Fire Safety",  savings: 0,    trigger: "certification_expiring" },
+    { label: "Sprinkler cycle due in 7 days · 18 buildings",         savings: 0,    trigger: "certification_expiring" },
+    { label: "Elevator TSSA overdue · 622 Lorne Park escalated",     savings: 0,    trigger: "certification_expiring" },
+    { label: "Contractor WSIB lapse caught · dispatch blocked",      savings: 1_400, trigger: "certification_expiring" },
+    { label: "Insurance renewal in 22 days · carrier quotes pulled", savings: 0,    trigger: "certification_expiring" },
   ],
-  outcome_observer: [
-    { label: "Confirmed: fatigue dropped 18 pts post-swap", savings: 0, trigger: "fatigue_threshold_breach" },
-    { label: "Observed: coverage held after reduction", savings: 0, trigger: "coverage_gap" },
-  ],
-  performance_observer: [
-    { label: "Flag: 3 Q1 promotion candidates ready", savings: 0, trigger: "cost_spike" },
-    { label: "Retention risk: 2 senior Ramp leads", savings: 0, trigger: "cost_spike" },
-  ],
-  signal_scanner: [
-    { label: "Pattern detected: Monday AM sick cluster", savings: 0, trigger: "cost_spike" },
-    { label: "Cross-training momentum · +3× baseline", savings: 0, trigger: "cost_spike" },
-  ],
-  cost_watcher: [
-    { label: "Agency avoidance: internal OT cheaper", savings: 1840, trigger: "cost_spike" },
-    { label: "Reallocate 6 OT hours to rested agents", savings: 680, trigger: "cost_spike" },
-    { label: "Convert PT→FT · save $3.9K/mo", savings: 3900, trigger: "cost_spike" },
+  turnover_orchestrator: [
+    { label: "Unit 1201 advanced: clean → listed",                   savings: 0,    trigger: "cost_spike" },
+    { label: "Parallel work detected: paint + repair running",       savings: 260,  trigger: "cost_spike" },
+    { label: "Listing auto-published with photo set",                savings: 0,    trigger: "cost_spike" },
   ],
   briefing_composer: [
-    { label: "Weekly executive brief generated", savings: 0, trigger: "cost_spike" },
+    { label: "Weekly portfolio briefing generated in 38s",           savings: 0,    trigger: "cost_spike" },
+    { label: "Monthly NOI summary drafted",                          savings: 0,    trigger: "cost_spike" },
   ],
 };
 
@@ -103,7 +102,7 @@ function makeReasoning(summary: string): Reasoning {
       { label: "Fairness score", weight: 0.21 },
       { label: "Cost delta", weight: 0.17 },
     ],
-    sources: ["maia_workforce_state", "maia_rule_pack_esa", "maia_demand_forecasts"],
+    sources: ["ry_portfolio_state", "ry_rule_pack_rta", "ry_work_order_queue"],
     summary,
   };
 }
@@ -125,7 +124,7 @@ function makeProposedAction(label: string, savings: number): ProposedAction {
 function makeCounterfactual(): Counterfactual {
   return {
     if_accepted: { outcome_summary: "Constraint satisfied; measured improvement visible in 24h observation window." },
-    if_ignored: { outcome_summary: "Likely rest-period breach + escalation to HR within 48h." },
+    if_ignored: { outcome_summary: "Likely SLA breach + tenant escalation within 48h." },
     historical: { total_cases: 128, acceptance_led_to_improvement_pct: 0.89 },
   };
 }
@@ -141,16 +140,13 @@ function generateSyntheticRuns(): AgentRun[] {
   const now = new Date();
   // 180 runs distributed with weighting toward the busy agents
   const agentWeights: Record<string, number> = {
-    fatigue_guardian: 3.2,
-    demand_watcher: 2.8,
-    shift_market: 2.4,
-    incentive_optimizer: 1.6,
-    timeoff_watcher: 1.4,
+    dispatch_agent: 3.8,
+    work_order_market: 2.0,
+    vacancy_watcher: 1.6,
+    arrears_sentinel: 1.8,
+    energy_optimizer: 3.2,
     compliance_sentinel: 1.8,
-    outcome_observer: 2.0,
-    performance_observer: 1.0,
-    signal_scanner: 1.2,
-    cost_watcher: 1.6,
+    turnover_orchestrator: 1.2,
     briefing_composer: 0.3,
   };
   const agentPool: string[] = [];
@@ -161,7 +157,7 @@ function generateSyntheticRuns(): AgentRun[] {
 
   for (let i = 0; i < 180; i++) {
     const agentId = agentPool[Math.floor(r() * agentPool.length)];
-    const actions = AGENT_ACTIONS[agentId] ?? AGENT_ACTIONS.fatigue_guardian;
+    const actions = AGENT_ACTIONS[agentId] ?? AGENT_ACTIONS.dispatch_agent;
     const action = actions[Math.floor(r() * actions.length)];
     const staff = STAFF[Math.floor(r() * STAFF.length)];
 
@@ -649,7 +645,7 @@ function OutcomeInsights({ stats, runs }: { stats: { totalRuns: number; executed
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       <InsightCard
         title="Pattern: acceptance trust"
-        body={`Green executed nodes cluster around Fatigue Guardian, Compliance Sentinel, and Cost Watcher — the three agents where management trust has translated to ~${Math.round((stats.executed / stats.totalRuns) * 100)}% execution rate across ${stats.totalRuns.toLocaleString()} decisions.`}
+        body={`Green executed nodes cluster around Dispatch Agent, Energy Optimizer, and Compliance Sentinel — the three agents where portfolio trust has translated to ~${Math.round((stats.executed / stats.totalRuns) * 100)}% execution rate across ${stats.totalRuns.toLocaleString()} decisions.`}
         metric={`${Math.round((stats.executed / stats.totalRuns) * 100)}%`}
         metricLabel="execution rate"
         accent="#10B981"

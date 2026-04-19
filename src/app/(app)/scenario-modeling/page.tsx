@@ -4,29 +4,28 @@ import { useState, useEffect } from 'react'
 import { Play, Save, Copy, BarChart3, DollarSign, Clock, AlertTriangle, Target, TrendingUp, Users, Shield, Layers, ChevronDown } from 'lucide-react'
 
 const SCENARIOS: Record<string, { name: string; desc: string; results: Record<string, number> }> = {
-  baseline:         { name: 'Current Operations',          desc: 'Existing staffing levels and policies',                      results: { coverage: 94.9, cost: 285400, overtime: 18200, fatigue: 2.3, leave: 23, fill: 89.2, risk: 2.1, compliance: 98.2 } },
-  reduced_ot:       { name: 'Reduce Overtime 15%',         desc: 'Optimize shifts to minimize overtime costs',                 results: { coverage: 93.2, cost: 268900, overtime: 15470, fatigue: 1.9, leave: 18, fill: 85.6, risk: 2.8, compliance: 97.1 } },
-  increased_buffer: { name: 'Increase Buffer 8%',          desc: 'Higher resilience with additional coverage',                 results: { coverage: 97.8, cost: 308200, overtime: 12900, fatigue: 2.1, leave: 31, fill: 92.4, risk: 1.6, compliance: 99.1 } },
-  micro_shifts:     { name: 'Enable Micro Shifts',         desc: 'Use 2–4 hour shifts for peak coverage',                      results: { coverage: 96.7, cost: 292100, overtime: 14300, fatigue: 2.7, leave: 25, fill: 91.8, risk: 2.3, compliance: 97.8 } },
-  split_shifts:     { name: 'Allow Split Shifts',          desc: 'Enable split shifts for peak cover — capped at 1/agent/14d', results: { coverage: 96.1, cost: 284900, overtime: 14100, fatigue: 2.6, leave: 26, fill: 91.4, risk: 2.4, compliance: 98.0 } },
-  cross_training:   { name: 'Aggressive Cross-Training',   desc: 'Fast-track 12 cross-training paths over 90 days',            results: { coverage: 96.3, cost: 289600, overtime: 13400, fatigue: 2.0, leave: 28, fill: 92.0, risk: 1.8, compliance: 98.4 } },
-  agency_cap:       { name: 'Hard Agency Cap',             desc: 'Cap agency usage at 2% of total shifts across all depts',     results: { coverage: 93.6, cost: 276400, overtime: 17900, fatigue: 2.5, leave: 22, fill: 87.8, risk: 2.6, compliance: 98.0 } },
-  full_market:      { name: 'Market-First Coverage',       desc: 'Prefer shift market postings over OT + agency',              results: { coverage: 95.4, cost: 278200, overtime: 11800, fatigue: 2.1, leave: 26, fill: 90.2, risk: 2.0, compliance: 98.3 } },
-  four_on_three_off:{ name: '4-on / 3-off Rotation',       desc: 'Compressed work-week rotation for Ramp Ops',                 results: { coverage: 94.4, cost: 284100, overtime: 16100, fatigue: 1.8, leave: 30, fill: 90.1, risk: 1.9, compliance: 98.5 } },
-  holiday_surge:    { name: 'Holiday Surge (Dec 22–28)',   desc: 'Pre-authorized OT + agency for winter holiday window',       results: { coverage: 98.2, cost: 341000, overtime: 26400, fatigue: 3.0, leave: 14, fill: 96.4, risk: 2.4, compliance: 97.8 } },
-  march_break:      { name: 'March Break Surge',           desc: 'Coverage model for March break peak week',                    results: { coverage: 96.8, cost: 318700, overtime: 21900, fatigue: 2.6, leave: 17, fill: 93.6, risk: 2.2, compliance: 98.1 } },
-  esa_12h_rule:     { name: 'ESA 12h Rest Pre-Comply',     desc: 'Adjust rotations to satisfy June 2026 12h rest rule',         results: { coverage: 94.1, cost: 291400, overtime: 19800, fatigue: 1.7, leave: 24, fill: 88.6, risk: 1.5, compliance: 99.4 } },
-  weather_storm:    { name: 'Winter Storm Response',       desc: '48h de-icing surge + extended ground crew',                  results: { coverage: 97.5, cost: 312800, overtime: 24100, fatigue: 2.9, leave: 15, fill: 94.8, risk: 2.7, compliance: 97.6 } },
-  rtw_integration:  { name: 'Graduated RTW Integration',   desc: 'Activate light-duty pool from WSIB-returning staff',         results: { coverage: 95.7, cost: 282300, overtime: 16800, fatigue: 2.0, leave: 27, fill: 90.8, risk: 1.7, compliance: 98.6 } },
-  fairness_rotate:  { name: 'Sunday Rotation Rebalance',   desc: 'Seniority-blended rotation for Sunday load distribution',    results: { coverage: 94.8, cost: 286900, overtime: 17700, fatigue: 2.2, leave: 23, fill: 89.6, risk: 2.0, compliance: 98.7 } },
-  flex_schedules:   { name: 'Flex Self-Scheduling',        desc: 'Open self-scheduling for ±2h shift-start window',            results: { coverage: 95.1, cost: 287800, overtime: 16200, fatigue: 2.0, leave: 29, fill: 91.2, risk: 1.8, compliance: 98.3 } },
-  aggressive_save:  { name: 'Aggressive Cost Reduction',   desc: 'All levers: less OT, market-first, tight cap, no micro',     results: { coverage: 92.4, cost: 261300, overtime: 13100, fatigue: 2.0, leave: 19, fill: 84.9, risk: 2.9, compliance: 96.8 } },
-  headcount_plus3:  { name: 'Add 3 FTE (Ground Ops)',      desc: 'Permanent headcount addition to close chronic coverage gap', results: { coverage: 97.4, cost: 301800, overtime: 11400, fatigue: 1.9, leave: 30, fill: 93.1, risk: 1.6, compliance: 98.9 } },
-  headcount_plus5:  { name: 'Add 5 FTE (cross-dept)',      desc: 'Headcount addition balanced across 3 departments',           results: { coverage: 98.0, cost: 315600, overtime: 10400, fatigue: 1.8, leave: 33, fill: 94.4, risk: 1.4, compliance: 99.0 } },
-  pt_to_ft:         { name: 'Convert 4 PT → FT',           desc: 'Convert 4 high-performing part-time staff to full-time',     results: { coverage: 96.2, cost: 288100, overtime: 14600, fatigue: 1.9, leave: 28, fill: 91.8, risk: 1.7, compliance: 98.5 } },
-  fatigue_strict:   { name: 'Strict Fatigue Guardrails',   desc: 'Hard cap: 5 consecutive shifts + 12h rest enforced',         results: { coverage: 94.2, cost: 288400, overtime: 17100, fatigue: 1.5, leave: 27, fill: 89.0, risk: 1.3, compliance: 99.2 } },
-  dual_incentive:   { name: 'Two-Round Incentive Only',    desc: 'Cap incentive escalation at round 2 with fairness gate',     results: { coverage: 94.6, cost: 280100, overtime: 16900, fatigue: 2.2, leave: 23, fill: 88.8, risk: 2.2, compliance: 98.3 } },
-  ai_autonomous:    { name: 'Fully Autonomous Agents',     desc: 'All MAIA agents run autonomously; managers approve exceptions only', results: { coverage: 95.6, cost: 279400, overtime: 14900, fatigue: 2.0, leave: 26, fill: 91.0, risk: 1.9, compliance: 98.5 } },
+  baseline:         { name: 'Current Operations',              desc: 'Current portfolio · 120 buildings · existing policies',                      results: { coverage: 94.9, cost: 285400, overtime: 18200, fatigue: 2.3, leave: 23, fill: 89.2, risk: 2.1, compliance: 98.2 } },
+  tighten_arrears:  { name: 'Tighten Arrears Escalation',      desc: 'Soft reminder at day 2 (not day 3); earlier N4 drafting',                    results: { coverage: 95.8, cost: 279100, overtime: 17400, fatigue: 2.0, leave: 24, fill: 90.4, risk: 1.8, compliance: 98.6 } },
+  energy_aggressive:{ name: 'Aggressive Energy Optimization',  desc: 'Widen unoccupied drift to 5°C portfolio-wide',                               results: { coverage: 94.9, cost: 268800, overtime: 18200, fatigue: 2.3, leave: 23, fill: 89.2, risk: 1.9, compliance: 98.2 } },
+  market_first:     { name: 'Market-First Dispatch',           desc: 'Post every non-emergency work order to market before auto-assigning',         results: { coverage: 95.1, cost: 272600, overtime: 14300, fatigue: 2.1, leave: 25, fill: 90.8, risk: 2.0, compliance: 98.3 } },
+  fairness_tight:   { name: 'Tighter Vendor Cap (20%)',        desc: 'Lower single-vendor monthly cap from 25% → 20% across all trades',           results: { coverage: 94.2, cost: 287200, overtime: 19100, fatigue: 2.2, leave: 23, fill: 88.4, risk: 2.2, compliance: 99.0 } },
+  turnover_14day:   { name: '14-Day Turnover SLA',             desc: 'Hard target: every unit flip ≤ 14 calendar days; parallel trades allowed',   results: { coverage: 97.1, cost: 291400, overtime: 19900, fatigue: 2.4, leave: 22, fill: 91.8, risk: 1.9, compliance: 98.4 } },
+  in_house_boost:   { name: 'Grow In-House Team +8',           desc: 'Add 8 maintenance staff; reduce contractor spend',                            results: { coverage: 96.2, cost: 278800, overtime: 11200, fatigue: 1.8, leave: 30, fill: 91.5, risk: 1.7, compliance: 98.8 } },
+  contractor_cap:   { name: 'Hard Contractor Cap (20%)',       desc: 'Cap total contractor spend at 20% of maintenance budget',                     results: { coverage: 93.4, cost: 268400, overtime: 18900, fatigue: 2.1, leave: 21, fill: 87.2, risk: 2.4, compliance: 97.9 } },
+  preventive_plus:  { name: 'Preventive Maintenance +40%',     desc: 'Double-down on PM schedules for buildings with 3+ compliance alerts',         results: { coverage: 96.8, cost: 293600, overtime: 17100, fatigue: 2.0, leave: 25, fill: 92.1, risk: 1.6, compliance: 99.3 } },
+  winter_storm:     { name: 'Winter Storm Response',           desc: '72h pre-authorized dispatch for heating, burst pipes, snow emergencies',      results: { coverage: 98.1, cost: 302400, overtime: 22300, fatigue: 2.7, leave: 18, fill: 95.0, risk: 2.1, compliance: 98.6 } },
+  holiday_season:   { name: 'Winter Holiday Window',           desc: 'Dec 22–Jan 2 minimal on-call staffing, emergency-only dispatch',              results: { coverage: 90.4, cost: 258200, overtime: 12800, fatigue: 2.0, leave: 35, fill: 85.6, risk: 2.5, compliance: 97.4 } },
+  rta_guideline_27: { name: 'RTA 2027 Guideline Pre-Comply',   desc: 'Model the 2027 rent guideline ceiling across all in-scope units',             results: { coverage: 94.9, cost: 279100, overtime: 17200, fatigue: 2.2, leave: 23, fill: 89.5, risk: 2.0, compliance: 99.4 } },
+  acquisition_20:   { name: 'Acquire 20 New Buildings',        desc: 'Absorb 1,800 new units over 18 months; scale team + systems',                 results: { coverage: 93.8, cost: 336800, overtime: 22100, fatigue: 2.5, leave: 24, fill: 88.4, risk: 2.3, compliance: 97.8 } },
+  divest_underperf: { name: 'Divest 8 Under-performers',       desc: 'Sell 8 buildings with health score < 55; reinvest proceeds',                  results: { coverage: 96.4, cost: 261200, overtime: 15100, fatigue: 1.9, leave: 26, fill: 92.4, risk: 1.6, compliance: 98.9 } },
+  smart_lock_rollout:{ name: 'Smart Lock Rollout',             desc: 'Smart locks on all 11,400 units; reduce lockout dispatches 85%',              results: { coverage: 95.6, cost: 274400, overtime: 16900, fatigue: 2.0, leave: 25, fill: 90.7, risk: 1.8, compliance: 98.5 } },
+  bms_expansion:    { name: 'BMS Expansion +14 Bldgs',         desc: 'Integrate 14 more buildings onto Metasys / Desigo BMS',                       results: { coverage: 95.4, cost: 268400, overtime: 17800, fatigue: 2.1, leave: 24, fill: 90.3, risk: 1.7, compliance: 98.7 } },
+  short_term_pilot: { name: 'Short-Term Rental Pilot',         desc: 'Convert 5% of units in 3 downtown buildings to furnished short-term',         results: { coverage: 94.6, cost: 294100, overtime: 19400, fatigue: 2.3, leave: 22, fill: 89.8, risk: 2.4, compliance: 98.1 } },
+  rent_collect_pad: { name: 'Mandatory PAD Rollout',           desc: 'All new tenants on pre-authorized debit; projected 30% arrears drop',         results: { coverage: 95.0, cost: 282100, overtime: 17900, fatigue: 2.2, leave: 24, fill: 89.8, risk: 1.7, compliance: 98.6 } },
+  tenant_app:       { name: 'Tenant Self-Serve App',           desc: 'Tenants submit work orders, pay rent, book amenities via app',                results: { coverage: 95.7, cost: 278900, overtime: 16100, fatigue: 2.0, leave: 27, fill: 91.2, risk: 1.8, compliance: 98.5 } },
+  gradual_auto:     { name: 'Phased Agent Autonomy',           desc: 'Level-up Dispatch + Energy to full autonomy; keep Arrears in draft mode',     results: { coverage: 95.8, cost: 272400, overtime: 15200, fatigue: 2.0, leave: 26, fill: 91.1, risk: 1.9, compliance: 98.5 } },
+  full_autonomous:  { name: 'Fully Autonomous Agents',         desc: 'All agents run autonomously; managers approve exceptions only',               results: { coverage: 96.2, cost: 267800, overtime: 13400, fatigue: 1.9, leave: 28, fill: 91.8, risk: 2.0, compliance: 98.4 } },
+  aggressive_save:  { name: 'Aggressive Cost Reduction',       desc: 'All levers: market-first, contractor cap, energy optim, tight arrears',       results: { coverage: 94.0, cost: 254900, overtime: 13800, fatigue: 2.0, leave: 24, fill: 88.2, risk: 2.1, compliance: 98.2 } },
 }
 
 export default function ScenarioModelingPage() {
@@ -109,14 +108,14 @@ export default function ScenarioModelingPage() {
   }
 
   const METRIC_CONFIG = [
-    { key: 'coverage', label: 'Coverage', icon: Target, type: 'coverage', fmt: (v: number) => `${v.toFixed(1)}%` },
-    { key: 'cost', label: 'Total Cost', icon: DollarSign, type: 'cost', fmt: (v: number) => `$${(v/1000).toFixed(0)}K` },
-    { key: 'overtime', label: 'Overtime', icon: Clock, type: 'cost', fmt: (v: number) => `$${(v/1000).toFixed(0)}K` },
-    { key: 'fatigue', label: 'Fatigue Risk', icon: AlertTriangle, type: 'risk', fmt: (v: number) => v.toFixed(1) },
-    { key: 'leave', label: 'Leave Capacity', icon: Users, type: 'coverage', fmt: (v: number) => `${v}` },
-    { key: 'fill', label: 'Fill Rate', icon: TrendingUp, type: 'coverage', fmt: (v: number) => `${v.toFixed(1)}%` },
-    { key: 'risk', label: 'Risk Score', icon: BarChart3, type: 'risk', fmt: (v: number) => v.toFixed(1) },
-    { key: 'compliance', label: 'Compliance', icon: Shield, type: 'compliance', fmt: (v: number) => `${v.toFixed(1)}%` },
+    { key: 'coverage',   label: 'Occupancy',         icon: Target,         type: 'coverage',   fmt: (v: number) => `${v.toFixed(1)}%` },
+    { key: 'cost',       label: 'Monthly Opex',      icon: DollarSign,     type: 'cost',       fmt: (v: number) => `$${(v/1000).toFixed(0)}K` },
+    { key: 'overtime',   label: 'Contractor Spend',  icon: Clock,          type: 'cost',       fmt: (v: number) => `$${(v/1000).toFixed(0)}K` },
+    { key: 'fatigue',    label: 'Equipment Risk',    icon: AlertTriangle,  type: 'risk',       fmt: (v: number) => v.toFixed(1) },
+    { key: 'leave',      label: 'Turnover Capacity', icon: Users,          type: 'coverage',   fmt: (v: number) => `${v}` },
+    { key: 'fill',       label: 'Work Order Fill',   icon: TrendingUp,     type: 'coverage',   fmt: (v: number) => `${v.toFixed(1)}%` },
+    { key: 'risk',       label: 'Portfolio Risk',    icon: BarChart3,      type: 'risk',       fmt: (v: number) => v.toFixed(1) },
+    { key: 'compliance', label: 'Compliance',        icon: Shield,         type: 'compliance', fmt: (v: number) => `${v.toFixed(1)}%` },
   ]
 
   return (
@@ -136,7 +135,7 @@ export default function ScenarioModelingPage() {
           </div>
           <div>
             <h1 className="text-[22px] font-bold text-slate-900 tracking-tight">Scenario Modeling</h1>
-            <p className="text-[12px] text-slate-500 font-medium">Strategic "what-if" testing for staffing, cost, and operations</p>
+            <p className="text-[12px] text-slate-500 font-medium">Strategic &ldquo;what-if&rdquo; testing for portfolio strategy, cost, and operations</p>
           </div>
         </div>
         <p className="text-[15px] font-semibold text-slate-800 leading-relaxed">
