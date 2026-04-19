@@ -111,7 +111,7 @@ export function Sidebar() {
   const { user } = useAuth();
 
   const displayName = user?.user_metadata?.full_name || "Moe Yousuf";
-  const displayEmail = user?.email || "moe@maiaintelligence.io";
+  const displayEmail = user?.email || "reemyousuf1012@gmail.com";
   const avatarInitial = displayName[0]?.toUpperCase() ?? "M";
 
   return (
