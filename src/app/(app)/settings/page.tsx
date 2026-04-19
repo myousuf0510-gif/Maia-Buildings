@@ -185,7 +185,7 @@ function ProfileSection() {
   const [savedFlash, setSavedFlash] = useState(false);
   const [profile, setProfile] = useState({
     fullName: "Moe Yousuf",
-    email: "reemyousuf1012@gmail.com",
+    email: "moe@maiaintelligence.io",
     role: "Founder & CEO",
     org: "MAIA Intelligence",
     timezone: "America/Toronto",

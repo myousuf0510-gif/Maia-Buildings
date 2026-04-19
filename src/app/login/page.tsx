@@ -81,7 +81,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 onFocus={() => setEmailFocus(true)}
                 onBlur={() => setEmailFocus(false)}
-                placeholder="reemyousuf1012@gmail.com"
+                placeholder="moe@maiaintelligence.io"
                 required
                 className="w-full px-4 py-3 rounded-xl text-sm font-medium text-[#0F172A] placeholder:text-[#94A3B8] transition-all duration-200"
                 style={{
